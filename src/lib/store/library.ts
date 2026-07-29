@@ -2,7 +2,6 @@ import { create } from "zustand";
 import { MARKET_BOOKS } from "@/lib/books/catalog";
 import type { Book, ReadingProgress } from "@/lib/books/types";
 import { parseUploadedBook } from "@/lib/books/parse-upload";
-import { canPublishUploadToMarket } from "@/lib/books/copyright";
 import {
   idbDeleteBookMeta,
   idbGetProgress,
@@ -12,6 +11,10 @@ import {
   idbSaveProgress,
 } from "@/lib/storage/idb";
 import { deleteBookFile, putBookFile } from "@/lib/storage/r2";
+import {
+  getCommunityBook,
+  listCommunityPdBooks,
+} from "@/lib/server/community-books";
 import { uid } from "@/lib/utils";
 
 const SHELF_KEY = "modu_shelf_ids";
@@ -32,17 +35,16 @@ function saveShelfIds(ids: string[]) {
   localStorage.setItem(SHELF_KEY, JSON.stringify(ids));
 }
 
-/** Normalize legacy stored books (pre-copyright fields) */
 function normalizeBook(raw: Book): Book {
   if (raw.source === "upload" || raw.id.startsWith("upload_")) {
     return {
       ...raw,
       source: "upload",
       visibility: "private",
-      license: raw.license || "仅自己可见 · 禁止上架书城",
+      license: raw.license || "仅自己可见 · 未声明公版",
       licenseNote:
         raw.licenseNote ||
-        "私有上传：仅供个人阅读，不可公开到书城，他人无法访问正文。",
+        "私有上传：未作公版声明前不会进入书城。",
     };
   }
   return {
@@ -56,18 +58,25 @@ interface LibraryState {
   ready: boolean;
   shelfIds: string[];
   uploaded: Book[];
+  community: Book[];
   progressMap: Record<string, ReadingProgress>;
   init: () => Promise<void>;
+  refreshCommunity: () => Promise<void>;
   addToShelf: (bookId: string) => void;
   removeFromShelf: (bookId: string) => Promise<void>;
   isOnShelf: (bookId: string) => boolean;
   uploadBook: (
     file: File,
-    meta?: { title?: string; author?: string; personalUseAck: boolean },
+    meta: {
+      title?: string;
+      author?: string;
+      personalUseAck: boolean;
+    },
     onPhase?: (phase: string) => void,
   ) => Promise<Book>;
+  cacheCommunityBook: (book: Book) => void;
   getBook: (id: string) => Book | undefined;
-  /** 书城公开目录（永不含上传） */
+  resolveBook: (id: string) => Promise<Book | undefined>;
   marketBooks: () => Book[];
   allBooks: () => Book[];
   shelfBooks: () => Book[];
@@ -79,6 +88,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   ready: false,
   shelfIds: [],
   uploaded: [],
+  community: [],
   progressMap: {},
 
   init: async () => {
@@ -90,20 +100,37 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const map: Record<string, ReadingProgress> = {};
       for (const p of progresses) map[p.bookId] = p;
       const shelfIds = loadShelfIds();
+      let community: Book[] = [];
+      try {
+        community = await listCommunityPdBooks();
+      } catch {
+        community = [];
+      }
       const valid = new Set([
         ...MARKET_BOOKS.map((b) => b.id),
         ...uploaded.map((b) => b.id),
+        ...community.map((b) => b.id),
       ]);
-      const cleaned = shelfIds.filter((id) => valid.has(id));
+      const cleaned = shelfIds.filter((id) => valid.has(id) || id.startsWith("community_"));
       if (cleaned.length !== shelfIds.length) saveShelfIds(cleaned);
       set({
         ready: true,
         uploaded,
+        community,
         shelfIds: cleaned,
         progressMap: map,
       });
     } catch {
       set({ ready: true, shelfIds: loadShelfIds() });
+    }
+  },
+
+  refreshCommunity: async () => {
+    try {
+      const community = await listCommunityPdBooks();
+      set({ community });
+    } catch {
+      /* ignore */
     }
   },
 
@@ -134,12 +161,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   isOnShelf: (bookId) => get().shelfIds.includes(bookId),
 
   uploadBook: async (file, meta, onPhase) => {
-    // 底线：未确认个人用途不可上传
     if (!meta?.personalUseAck) {
-      throw new Error("请确认：本书仅供个人阅读，不会公开到书城");
+      throw new Error("请确认版权与个人使用声明");
     }
-    // 双保险：上传永不可上架
-    void canPublishUploadToMarket();
 
     onPhase?.("parsing");
     const parsed = await parseUploadedBook(file);
@@ -167,7 +191,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         : parsed.format === "epub" && parsed.chapters?.length
           ? parsed.chapters.map((c) => ({
               ...c,
-              content: c.content?.slice(0, 500) || "",
+              content: c.content || "",
             }))
           : undefined;
 
@@ -175,7 +199,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       id,
       title: baseTitle,
       author,
-      description: `私有上传 · ${file.name} · 仅自己可见`,
+      description: `私有上传 · ${file.name}`,
       coverColor:
         parsed.format === "pdf"
           ? "#3a2820"
@@ -187,9 +211,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       format: parsed.format,
       source: "upload",
       visibility: "private",
-      license: "仅自己可见 · 禁止上架书城",
+      license: "仅自己可见 · 未声明公版",
       licenseNote:
-        "私有图书：内容不进入书城，其他用户无法打开正文。公开社区仅可分享你的评论/摘要，不可公开原文。",
+        "默认私有。若确认为公版，可在上传页选择「贡献到社区公版」。",
       tags: ["私有", "上传", parsed.format.toUpperCase()],
       rating: 5,
       readers: 1,
@@ -215,21 +239,52 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     return book;
   },
 
+  cacheCommunityBook: (book) => {
+    const rest = get().community.filter((b) => b.id !== book.id);
+    set({ community: [book, ...rest] });
+  },
+
   getBook: (id) => {
     return (
       get().uploaded.find((b) => b.id === id) ||
+      get().community.find((b) => b.id === id) ||
       MARKET_BOOKS.find((b) => b.id === id)
     );
   },
 
-  marketBooks: () =>
-    MARKET_BOOKS.filter(
-      (b) => b.source === "market" && b.visibility === "public_domain",
-    ),
+  resolveBook: async (id) => {
+    const local = get().getBook(id);
+    if (local) return local;
+    if (id.startsWith("community_")) {
+      try {
+        const b = await getCommunityBook({ data: id });
+        if (b) {
+          get().cacheCommunityBook(b);
+          return b;
+        }
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  },
+
+  marketBooks: () => {
+    const official = MARKET_BOOKS.filter(
+      (b) => b.visibility === "public_domain",
+    );
+    const community = get().community.filter(
+      (b) => b.visibility === "public_domain_community",
+    );
+    return [...community, ...official];
+  },
 
   allBooks: () => {
-    // 注意：上传书仅用于「我的书架」，不应混入书城
-    return [...get().uploaded, ...MARKET_BOOKS];
+    return [
+      ...get().uploaded,
+      ...get().community,
+      ...MARKET_BOOKS,
+    ];
   },
 
   shelfBooks: () => {
@@ -259,13 +314,3 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   getProgress: (bookId) => get().progressMap[bookId],
 }));
-
-export async function hydrateProgress(bookId: string) {
-  const p = await idbGetProgress<ReadingProgress>(bookId);
-  if (p) {
-    useLibraryStore.setState((s) => ({
-      progressMap: { ...s.progressMap, [bookId]: p },
-    }));
-  }
-  return p;
-}

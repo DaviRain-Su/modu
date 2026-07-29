@@ -2,8 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSessionUser } from "@/lib/auth/verify.server";
-import { isMarketBookId } from "@/lib/books/catalog";
 import {
+  isListableMarketId,
   isPrivateBookId,
   sanitizePublicAnnotation,
 } from "@/lib/books/copyright";
@@ -49,7 +49,6 @@ export const recordBookRead = createServerFn({ method: "POST" })
   .handler(async ({ context, data: bookId }) => {
     const sql = await getSql();
     await ensureProfile(sql, context.userId);
-    // 阅读行为可统计；私有书也记一条（榜单展示时会脱敏书名）
     await sql`
       insert into book_reads (user_id, book_id) values (${context.userId}, ${bookId})
     `;
@@ -78,7 +77,6 @@ export const createAnnotation = createServerFn({ method: "POST" })
     }),
   )
   .handler(async ({ context, data }) => {
-    // 版权净化：私有书公开时禁止原文，只许评论/摘要
     const clean = sanitizePublicAnnotation({
       bookId: data.bookId,
       quote: data.quote,
@@ -86,8 +84,6 @@ export const createAnnotation = createServerFn({ method: "POST" })
       isPublic: data.isPublic,
     });
     if (clean.blocked) throw new Error(clean.blocked);
-
-    // 私有批注仍需要 quote；公开私有书时 quote 已被清空，需 note
     if (!clean.quote && !clean.note) {
       throw new Error("请选择原文或填写评论");
     }
@@ -113,13 +109,16 @@ export const createAnnotation = createServerFn({ method: "POST" })
         ${clean.isPublic}
       )
     `;
-    return { id, isPublic: clean.isPublic, quoteStripped: !clean.quote && data.isPublic };
+    return {
+      id,
+      isPublic: clean.isPublic,
+      quoteStripped: !clean.quote && data.isPublic,
+    };
   });
 
 export const listBookAnnotations = createServerFn({ method: "GET" })
   .validator((bookId: string) => bookId.trim())
   .handler(async ({ data: bookId }) => {
-    // 私有书：不对外暴露该书公开批注列表中的原文（双保险）
     const privateBook = isPrivateBookId(bookId);
     const sql = await getSql();
     const rows = await sql<{
@@ -185,8 +184,8 @@ export const getHotBooks = createServerFn({ method: "GET" }).handler(
     `;
     const map = new Map<string, HotBookRow>();
     for (const r of reads) {
-      // 热门书单只展示公版书城条目；私有书阅读量不进入「可点开」榜
-      if (!isMarketBookId(r.book_id)) continue;
+      // 仅公版/社区公版进入可点开热榜
+      if (!isListableMarketId(r.book_id)) continue;
       map.set(r.book_id, {
         bookId: r.book_id,
         readCount: r.c,
@@ -195,7 +194,7 @@ export const getHotBooks = createServerFn({ method: "GET" }).handler(
       });
     }
     for (const a of anns) {
-      if (!isMarketBookId(a.book_id)) continue;
+      if (!isListableMarketId(a.book_id)) continue;
       const cur = map.get(a.book_id);
       if (cur) {
         cur.annotationCount = a.c;
@@ -240,7 +239,6 @@ export const getRecentPublicNotes = createServerFn({ method: "GET" }).handler(
         userId: r.user_id,
         displayName: r.display_name,
         bookId: r.book_id,
-        // 私有书：留言板只出评论，不出原文
         quote: privateBook ? "" : r.quote,
         note: r.note,
         createdAt: r.created_at,

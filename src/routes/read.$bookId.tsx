@@ -20,7 +20,7 @@ import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
 import { useLibraryStore } from "@/lib/store/library";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { recordBookRead } from "@/lib/server/social";
-import type { ReadingProgress } from "@/lib/books/types";
+import type { Book, ReadingProgress } from "@/lib/books/types";
 import { cn } from "@/lib/utils";
 
 const searchSchema = z.object({
@@ -53,17 +53,28 @@ function ReaderPage() {
   const isLg = useIsLg();
   const ready = useLibraryStore((s) => s.ready);
   const getBook = useLibraryStore((s) => s.getBook);
+  const resolveBook = useLibraryStore((s) => s.resolveBook);
   const getProgress = useLibraryStore((s) => s.getProgress);
   const saveProgress = useLibraryStore((s) => s.saveProgress);
   const addToShelf = useLibraryStore((s) => s.addToShelf);
   const { user } = useCurrentUserState();
 
-  const book = getBook(bookId);
+  const [book, setBook] = useState<Book | null | undefined>(undefined);
   const stored = getProgress(bookId);
+
+  useEffect(() => {
+    if (!ready) return;
+    const local = getBook(bookId);
+    if (local) {
+      setBook(local);
+      return;
+    }
+    void resolveBook(bookId).then((b) => setBook(b ?? null));
+  }, [bookId, ready, getBook, resolveBook]);
 
   const chapters = book?.chapters ?? [];
   const [chapterId, setChapterId] = useState(
-    chapterParam || stored?.lastChapterId || chapters[0]?.id || "",
+    chapterParam || stored?.lastChapterId || "",
   );
   const [fontSize, setFontSize] = useState(18);
   const [lineHeight, setLineHeight] = useState(1.85);
@@ -89,7 +100,10 @@ function ReaderPage() {
 
   useEffect(() => {
     if (chapterParam) setChapterId(chapterParam);
-  }, [chapterParam]);
+    else if (book?.chapters?.[0] && !chapterId) {
+      setChapterId(book.chapters[0].id);
+    }
+  }, [chapterParam, book, chapterId]);
 
   useEffect(() => {
     if (isLg) setAiOpen(true);
@@ -131,10 +145,14 @@ function ReaderPage() {
     setAiOpen(true);
   }, []);
 
-  // Prefer selection; fall back to current page/chapter text for AI
-  const aiContextText = selectedText || pageContext || chapter?.content?.slice(0, 1500) || book?.previewText || "";
+  const aiContextText =
+    selectedText ||
+    pageContext ||
+    chapter?.content?.slice(0, 1500) ||
+    book?.previewText ||
+    "";
 
-  if (ready && !book) {
+  if (ready && book === null) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center bg-bg px-6 text-center">
         <p className="text-lg font-medium">找不到这本书</p>
@@ -155,6 +173,10 @@ function ReaderPage() {
 
   const chapterIndex = chapters.findIndex((c) => c.id === chapter?.id);
   const showToc = chapters.length > 0 || book.format === "epub";
+  // Community PD and market text books use TextReader
+  const useText =
+    book.format === "text" ||
+    (book.source === "community" && Boolean(chapter?.content));
 
   return (
     <div className="relative flex h-dvh flex-col bg-bg text-fg">
@@ -177,7 +199,7 @@ function ReaderPage() {
             <div className="min-w-0 flex-1 px-1">
               <p className="truncate text-sm font-medium">{book.title}</p>
               <p className="truncate text-[11px] text-fg-subtle">
-                {book.format === "pdf"
+                {book.format === "pdf" && book.storageKey
                   ? `PDF · 第 ${page} 页`
                   : chapter?.title || book.format.toUpperCase()}
               </p>
@@ -247,7 +269,7 @@ function ReaderPage() {
             setChromeVisible((v) => !v);
           }}
         >
-          {book.format === "text" && chapter && (
+          {useText && chapter && (
             <TextReader
               book={book}
               chapter={chapter}
@@ -258,7 +280,7 @@ function ReaderPage() {
               onSelectText={onSelectText}
             />
           )}
-          {book.format === "pdf" && book.storageKey && (
+          {!useText && book.format === "pdf" && book.storageKey && (
             <PdfReader
               storageKey={book.storageKey}
               theme={theme}
@@ -269,7 +291,7 @@ function ReaderPage() {
               onPageText={setPageContext}
             />
           )}
-          {book.format === "epub" && book.storageKey && (
+          {!useText && book.format === "epub" && book.storageKey && (
             <EpubReader
               storageKey={book.storageKey}
               theme={theme}
@@ -278,7 +300,7 @@ function ReaderPage() {
               onSelectText={onSelectText}
             />
           )}
-          {book.format !== "text" && !book.storageKey && (
+          {!useText && !book.storageKey && (
             <div className="flex h-full items-center justify-center bg-paper px-6 text-center text-sm text-paper-muted">
               文件缺失，请重新上传。
             </div>
@@ -292,16 +314,14 @@ function ReaderPage() {
               bookTitle={book.title}
               chapterId={chapter?.id}
               selectedText={aiContextText}
-              onClearSelection={() => {
-                setSelectedText("");
-              }}
+              onClearSelection={() => setSelectedText("")}
               className="h-full"
             />
           </aside>
         )}
       </div>
 
-      {book.format === "text" && chapters.length > 1 && chromeVisible && (
+      {useText && chapters.length > 1 && chromeVisible && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-between gap-3 px-3 pb-3 safe-pb">
           <Button
             variant="secondary"
@@ -372,36 +392,7 @@ function ReaderPage() {
             <p className="text-xs text-fg-subtle">{book.title}</p>
           </SheetHeader>
           <div className="overflow-y-auto p-2">
-            {book.format === "pdf" && book.pageCount ? (
-              // Jump list every ~10 pages + first/last
-              Array.from(
-                { length: Math.min(book.pageCount, 100) },
-                (_, i) => i + 1,
-              )
-                .filter(
-                  (p) =>
-                    p === 1 ||
-                    p === book.pageCount ||
-                    p % Math.max(1, Math.ceil((book.pageCount || 1) / 20)) === 0,
-                )
-                .map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className={cn(
-                      "flex w-full items-start gap-3 rounded-[var(--radius-md)] px-3 py-3 text-left text-sm transition-colors hover:bg-bg-subtle",
-                      p === page && "bg-bg-subtle",
-                    )}
-                    onClick={() => {
-                      setPage(p);
-                      setTocOpen(false);
-                    }}
-                  >
-                    <span className="w-10 shrink-0 text-fg-subtle">p.{p}</span>
-                    <span>第 {p} 页</span>
-                  </button>
-                ))
-            ) : chapters.length > 0 ? (
+            {chapters.length > 0 ? (
               chapters.map((ch, i) => (
                 <button
                   key={ch.id}
@@ -413,7 +404,7 @@ function ReaderPage() {
                   onClick={() => {
                     setChapterId(ch.id);
                     setTocOpen(false);
-                    if (book.format === "text") {
+                    if (useText) {
                       void navigate({
                         to: "/read/$bookId",
                         params: { bookId: book.id },
@@ -429,9 +420,7 @@ function ReaderPage() {
               ))
             ) : (
               <p className="px-3 py-6 text-sm text-fg-muted">
-                {book.format === "epub"
-                  ? "目录将在打开 EPUB 后从书籍导航加载；请用底部翻页阅读。"
-                  : "当前格式使用翻页浏览。"}
+                当前格式使用翻页浏览。
               </p>
             )}
           </div>
@@ -491,37 +480,6 @@ function ReaderPage() {
                   variant="secondary"
                   size="icon-sm"
                   onClick={() => setFontSize((s) => Math.min(24, s + 1))}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-            <div>
-              <p className="mb-2 text-xs text-fg-muted">
-                行距 {lineHeight.toFixed(2)}
-              </p>
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="secondary"
-                  size="icon-sm"
-                  onClick={() =>
-                    setLineHeight((s) => Math.max(1.4, +(s - 0.1).toFixed(2)))
-                  }
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <div className="h-1.5 flex-1 rounded-full bg-bg-subtle">
-                  <div
-                    className="h-full rounded-full bg-accent"
-                    style={{ width: `${((lineHeight - 1.4) / 0.8) * 100}%` }}
-                  />
-                </div>
-                <Button
-                  variant="secondary"
-                  size="icon-sm"
-                  onClick={() =>
-                    setLineHeight((s) => Math.min(2.2, +(s + 0.1).toFixed(2)))
-                  }
                 >
                   <Plus className="h-4 w-4" />
                 </Button>

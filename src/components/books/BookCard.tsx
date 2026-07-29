@@ -41,10 +41,10 @@ export function BookCard({
             <Star className="h-3 w-3 fill-accent/80 text-accent" />
             {book.rating.toFixed(1)}
           </span>
-          {book.visibility === "public_domain" ? (
-            <span>{formatCount(book.readers)} 人在读</span>
-          ) : (
+          {book.visibility === "private" ? (
             <span>仅自己可见</span>
+          ) : (
+            <span>{formatCount(book.readers)} 人在读</span>
           )}
         </div>
         {showProgress &&
@@ -58,11 +58,14 @@ export function BookCard({
             </div>
           )}
         <div className="mt-2 flex flex-wrap gap-1">
-          {book.visibility === "public_domain" && (
-            <Badge variant="outline">公版</Badge>
+          {book.source === "community" && (
+            <Badge variant="accent">社区公版</Badge>
+          )}
+          {book.source === "market" && book.visibility === "public_domain" && (
+            <Badge variant="outline">官方公版</Badge>
           )}
           {book.source === "upload" && (
-            <Badge variant="accent">私有上传</Badge>
+            <Badge variant="accent">私有</Badge>
           )}
         </div>
       </div>
@@ -86,8 +89,10 @@ export function BookRow({ book }: { book: Book }) {
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <Badge variant="outline">{book.category}</Badge>
-            {book.visibility === "public_domain" ? (
-              <Badge variant="accent">公版</Badge>
+            {book.source === "community" ? (
+              <Badge variant="accent">社区公版</Badge>
+            ) : book.visibility === "public_domain" ? (
+              <Badge variant="outline">官方公版</Badge>
             ) : (
               <Badge>私有</Badge>
             )}

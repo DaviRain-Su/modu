@@ -1,8 +1,16 @@
 export type BookFormat = "epub" | "pdf" | "text";
-export type BookSource = "market" | "upload";
+export type BookSource = "market" | "upload" | "community";
 
-/** 版权可见性：书城仅 public_domain；用户上传强制 private */
-export type BookVisibility = "public_domain" | "private";
+/** 版权可见性 */
+export type BookVisibility = "public_domain" | "private" | "public_domain_community";
+
+/** 公版声明依据 */
+export type PublicDomainBasis =
+  | "ancient"
+  | "author_life_plus"
+  | "pre_1929"
+  | "project_gutenberg"
+  | "other";
 
 export type BookCategory =
   | "文学"
@@ -31,12 +39,12 @@ export interface Book {
   category: Exclude<BookCategory, "全部">;
   format: BookFormat;
   source: BookSource;
-  /** 书城书 = public_domain；上传 = private（永不进书城） */
   visibility: BookVisibility;
-  /** 例如 "公版 / Public Domain"、"仅自己可见" */
   license: string;
-  /** 许可说明 / 来源（古登堡、中华古籍等） */
   licenseNote?: string;
+  /** 公版声明依据（社区贡献） */
+  pdBasis?: PublicDomainBasis;
+  sourceUrl?: string;
   tags: string[];
   rating: number;
   readers: number;
