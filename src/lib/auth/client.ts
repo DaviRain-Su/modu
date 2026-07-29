@@ -200,10 +200,16 @@ async function requestOAuthUrl(
     const raw =
       json.message ||
       json.error ||
-      `登录接口失败 (${res.status})${text ? `: ${text.slice(0, 120)}` : ""}`;
+      (text ? text.slice(0, 200) : "") ||
+      `登录接口失败 (${res.status})`;
+    if (/database adapter|Failed to initialize/i.test(raw) || (res.status === 500 && !text)) {
+      throw new Error(
+        "社交登录后端尚未更新完成。请先用邮箱登录，或在本机执行：cd cloudflare && npx wrangler deploy",
+      );
+    }
     if (/invalid origin|forbidden/i.test(raw)) {
       throw new Error(
-        "登录域名未受信任。请在发布环境设置 BETTER_AUTH_URL 为当前站点地址（如 https://modu.grok.me）。",
+        "登录域名未受信任。请确认站点地址为 https://modu.grok.me。",
       );
     }
     throw new Error(raw);
