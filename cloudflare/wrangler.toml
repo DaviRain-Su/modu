@@ -16,8 +16,8 @@ preview_bucket_name = "modu-books-preview"
 binding = "DB"
 database_name = "modu"
 # 首次: npx wrangler d1 create modu  → 把返回的 database_id 填到下一行
-database_id = "00000000-0000-0000-0000-000000000001"
-preview_database_id = "00000000-0000-0000-0000-000000000001"
+database_id = "a3833a9c-77cb-40c3-8589-2f42da7e976c"
+preview_database_id = "a3833a9c-77cb-40c3-8589-2f42da7e976c"
 
 [ai]
 binding = "AI"
