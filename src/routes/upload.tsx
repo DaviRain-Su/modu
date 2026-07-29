@@ -173,7 +173,7 @@ function UploadPage() {
           上传图书
         </h1>
         <p className="mt-1 text-fg-muted">
-          默认私有；若确认为公版，可声明后贡献到书城（无需官方一本本上传）。
+          推荐 EPUB（完整目录与重排版）。默认私有；公版可声明上架。PDF 暂不重点支持。
         </p>
       </div>
 
@@ -278,7 +278,7 @@ function UploadPage() {
             </div>
             <p className="text-sm font-medium">拖拽或选择文件</p>
             <p className="mt-1 text-xs text-fg-subtle">
-              PDF · EPUB · TXT · MD · 最大 80MB
+              优先 EPUB · 亦支持 TXT/MD · 最大 80MB（PDF 可上传但体验有限）
             </p>
             <label className="mt-4">
               <input

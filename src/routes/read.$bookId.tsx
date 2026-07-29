@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   AlignLeft,
   ChevronLeft,
+  Cloud,
   List,
   Minus,
   PanelRight,
@@ -16,7 +17,11 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { TextReader } from "@/components/reader/TextReader";
 import { PdfReader } from "@/components/reader/PdfReader";
-import { EpubReader } from "@/components/reader/EpubReader";
+import {
+  EpubReader,
+  type EpubReaderHandle,
+  type EpubTocItem,
+} from "@/components/reader/EpubReader";
 import { AiPanel } from "@/components/reader/AiPanel";
 import {
   SelectionToolbar,
@@ -29,6 +34,14 @@ import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
 import { useLibraryStore } from "@/lib/store/library";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { recordBookRead, createAnnotation } from "@/lib/server/social";
+import {
+  pullReadingProgress,
+  pushReadingProgress,
+} from "@/lib/server/progress";
+import {
+  listChapterDanmaku,
+  type DanmakuRow,
+} from "@/lib/server/danmaku";
 import type { Book, Highlight, ReadingProgress } from "@/lib/books/types";
 import {
   DEFAULT_READER_PREFS,
@@ -44,6 +57,8 @@ import { cn, uid } from "@/lib/utils";
 const searchSchema = z.object({
   chapter: z.string().optional(),
 });
+
+const DANMAKU_KEY = "modu_danmaku_on";
 
 export const Route = createFileRoute("/read/$bookId")({
   validateSearch: searchSchema,
@@ -81,7 +96,6 @@ function ReaderPage() {
   const [prefs, setPrefs] = useState<ReaderPrefs>(DEFAULT_READER_PREFS);
   const [prefsReady, setPrefsReady] = useState(false);
 
-  // selection → toolbar → annotate
   const [sel, setSel] = useState<SelectionAnchor | null>(null);
   const [noteDraft, setNoteDraft] = useState<{
     quote: string;
@@ -92,8 +106,23 @@ function ReaderPage() {
     stored?.highlights ?? [],
   );
 
+  const [cloudSynced, setCloudSynced] = useState(false);
+  const [danmaku, setDanmaku] = useState<DanmakuRow[]>([]);
+  const [danmakuOn, setDanmakuOn] = useState(true);
+  const [epubToc, setEpubToc] = useState<EpubTocItem[]>([]);
+  const [epubCfi, setEpubCfi] = useState<string | null>(
+    stored?.lastCfi ?? null,
+  );
+  const epubRef = useRef<EpubReaderHandle>(null);
+  const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     setPrefs(loadReaderPrefs());
+    try {
+      if (localStorage.getItem(DANMAKU_KEY) === "0") setDanmakuOn(false);
+    } catch {
+      /* ignore */
+    }
     setPrefsReady(true);
   }, []);
 
@@ -133,6 +162,39 @@ function ReaderPage() {
   const [page, setPage] = useState(stored?.lastPage ?? 1);
 
   useEffect(() => {
+    if (!user || !bookId) return;
+    let cancelled = false;
+    void pullReadingProgress({ data: bookId })
+      .then((cloud) => {
+        if (cancelled || !cloud) return;
+        const localUpdated = stored?.updatedAt ?? 0;
+        const cloudTs = Date.parse(cloud.updatedAt) || 0;
+        if (cloudTs >= localUpdated) {
+          setProgress(cloud.progress);
+          if (cloud.chapterId) setChapterId(cloud.chapterId);
+          if (cloud.page != null) setPage(cloud.page);
+          if (cloud.cfi) setEpubCfi(cloud.cfi);
+          setCloudSynced(true);
+          void saveProgress({
+            bookId,
+            progress: cloud.progress,
+            lastChapterId: cloud.chapterId || undefined,
+            lastPage: cloud.page ?? undefined,
+            lastCfi: cloud.cfi || undefined,
+            bookmarks: stored?.bookmarks ?? [],
+            highlights: stored?.highlights ?? localHighlights,
+            updatedAt: cloudTs || Date.now(),
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, bookId]);
+
+  useEffect(() => {
     if (book) addToShelf(book.id);
   }, [book, addToShelf]);
 
@@ -158,6 +220,51 @@ function ReaderPage() {
     [chapters, chapterId],
   );
 
+  const supportsDanmaku =
+    book?.visibility === "public_domain" ||
+    book?.visibility === "public_domain_community";
+
+  useEffect(() => {
+    if (!supportsDanmaku || !book || !chapter?.id) {
+      setDanmaku([]);
+      return;
+    }
+    let cancelled = false;
+    void listChapterDanmaku({
+      data: { bookId: book.id, chapterId: chapter.id },
+    })
+      .then((rows) => {
+        if (!cancelled) setDanmaku(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setDanmaku([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [supportsDanmaku, book?.id, chapter?.id]);
+
+  const scheduleCloudPush = useCallback(
+    (pct: number, extra?: { chapterId?: string; page?: number; cfi?: string }) => {
+      if (!user || !book) return;
+      if (pushTimer.current) clearTimeout(pushTimer.current);
+      pushTimer.current = setTimeout(() => {
+        void pushReadingProgress({
+          data: {
+            bookId: book.id,
+            progress: pct,
+            chapterId: extra?.chapterId ?? chapterId ?? chapter?.id,
+            page: extra?.page ?? page,
+            cfi: extra?.cfi ?? epubCfi,
+          },
+        })
+          .then(() => setCloudSynced(true))
+          .catch(() => {});
+      }, 1200);
+    },
+    [user, book, chapterId, chapter?.id, page, epubCfi],
+  );
+
   const persist = useCallback(
     (pct: number, extra?: Partial<ReadingProgress>) => {
       if (!book) return;
@@ -166,21 +273,29 @@ function ReaderPage() {
         progress: pct,
         lastChapterId: chapterId || chapter?.id,
         lastPage: page,
+        lastCfi: epubCfi || undefined,
         bookmarks: stored?.bookmarks ?? [],
         highlights: extra?.highlights ?? localHighlights,
         updatedAt: Date.now(),
         ...extra,
       };
       void saveProgress(next);
+      scheduleCloudPush(pct, {
+        chapterId: next.lastChapterId,
+        page: next.lastPage,
+        cfi: next.lastCfi,
+      });
     },
     [
       book,
       chapter?.id,
       chapterId,
       page,
+      epubCfi,
       saveProgress,
       stored?.bookmarks,
       localHighlights,
+      scheduleCloudPush,
     ],
   );
 
@@ -221,7 +336,6 @@ function ReaderPage() {
       setLocalHighlights(next);
       persist(progress, { highlights: next });
 
-      // sync public annotation when signed in
       if (input.isPublic && user) {
         try {
           await createAnnotation({
@@ -235,7 +349,9 @@ function ReaderPage() {
             },
           });
         } catch (e) {
-          toast.error(e instanceof Error ? e.message : "公开同步失败，已保存在本机");
+          toast.error(
+            e instanceof Error ? e.message : "公开同步失败，已保存在本机",
+          );
         }
       }
     },
@@ -254,7 +370,6 @@ function ReaderPage() {
     if (!sel) return;
     setNoteDraft({ quote: sel.text, color: "gold" });
     setSel(null);
-    // keep selection cleared after opening sheet
     clearBrowserSelection();
   };
 
@@ -278,7 +393,6 @@ function ReaderPage() {
     setSel(null);
   };
 
-  // PDF / EPUB fallback: text only → still open toolbar centered
   const onSelectTextFallback = useCallback((text: string) => {
     const t = text.replace(/\s+/g, " ").trim();
     if (t.length < 2) return;
@@ -289,6 +403,18 @@ function ReaderPage() {
       bottom: window.innerHeight * 0.35 + 24,
     });
   }, []);
+
+  const toggleDanmaku = () => {
+    setDanmakuOn((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem(DANMAKU_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   const aiContextText =
     selectedText ||
@@ -317,7 +443,8 @@ function ReaderPage() {
   }
 
   const chapterIndex = chapters.findIndex((c) => c.id === chapter?.id);
-  const showToc = chapters.length > 0 || book.format === "epub";
+  const showToc =
+    chapters.length > 0 || book.format === "epub" || epubToc.length > 0;
   const useText =
     book.format === "text" ||
     (book.source === "community" && Boolean(chapter?.content));
@@ -344,13 +471,21 @@ function ReaderPage() {
             </Button>
             <div className="min-w-0 flex-1 px-1">
               <p className="truncate text-sm font-medium">{book.title}</p>
-              <p className="truncate text-[11px] text-fg-subtle">
-                {book.format === "pdf" && book.storageKey
-                  ? `PDF · 第 ${page} 页`
-                  : chapter?.title || book.format.toUpperCase()}
+              <p className="flex items-center gap-1 truncate text-[11px] text-fg-subtle">
+                {book.format === "epub" && book.storageKey
+                  ? "EPUB"
+                  : book.format === "pdf" && book.storageKey
+                    ? `PDF · 第 ${page} 页`
+                    : chapter?.title || book.format.toUpperCase()}
                 {localHighlights.length > 0
-                  ? ` · ${localHighlights.length} 处划线`
+                  ? ` · ${localHighlights.length} 划线`
                   : ""}
+                {user && cloudSynced && (
+                  <span className="inline-flex items-center gap-0.5 text-accent">
+                    <Cloud className="h-3 w-3" />
+                    已同步
+                  </span>
+                )}
               </p>
             </div>
             {showToc && (
@@ -415,7 +550,6 @@ function ReaderPage() {
               )
             )
               return;
-            // don't toggle chrome while selecting
             if (window.getSelection()?.toString().trim()) return;
             setSel(null);
             setChromeVisible((v) => !v);
@@ -432,31 +566,51 @@ function ReaderPage() {
               font={prefs.font}
               theme={prefs.theme}
               highlights={localHighlights}
+              danmaku={danmaku}
+              danmakuEnabled={supportsDanmaku && danmakuOn}
+              onToggleDanmaku={supportsDanmaku ? toggleDanmaku : undefined}
+              signedIn={Boolean(user)}
+              onDanmakuPosted={(row) => setDanmaku((d) => [...d, row])}
               onProgress={onProgress}
               onSelect={setSel}
             />
           )}
-          {!useText && book.format === "pdf" && book.storageKey && (
-            <PdfReader
-              storageKey={book.storageKey}
-              theme={prefs.theme}
-              initialPage={page}
-              onProgress={onProgress}
-              onPageChange={setPage}
-              onSelectText={onSelectTextFallback}
-              onPageText={setPageContext}
-            />
-          )}
           {!useText && book.format === "epub" && book.storageKey && (
             <EpubReader
+              ref={epubRef}
               storageKey={book.storageKey}
               theme={prefs.theme}
               fontSize={prefs.fontSize}
               font={prefs.font}
               lineHeight={prefs.lineHeight}
+              initialCfi={epubCfi}
               onProgress={onProgress}
+              onLocation={({ cfi, pct }) => {
+                if (cfi) setEpubCfi(cfi);
+                setProgress(pct);
+                persist(pct, { lastCfi: cfi });
+              }}
               onSelectText={onSelectTextFallback}
+              onToc={setEpubToc}
             />
+          )}
+          {!useText && book.format === "pdf" && book.storageKey && (
+            <div className="flex h-full min-h-0 flex-col">
+              <p className="shrink-0 border-b border-border bg-bg-subtle/80 px-3 py-2 text-center text-[11px] text-fg-muted">
+                PDF 体验有限 · 推荐使用 EPUB
+              </p>
+              <div className="min-h-0 flex-1">
+                <PdfReader
+                  storageKey={book.storageKey}
+                  theme={prefs.theme}
+                  initialPage={page}
+                  onProgress={onProgress}
+                  onPageChange={setPage}
+                  onSelectText={onSelectTextFallback}
+                  onPageText={setPageContext}
+                />
+              </div>
+            </div>
           )}
           {!useText && !book.storageKey && (
             <div className="flex h-full items-center justify-center bg-paper px-6 text-center text-sm text-paper-muted">
@@ -479,7 +633,6 @@ function ReaderPage() {
         )}
       </div>
 
-      {/* 选区工具条 */}
       {sel && !noteDraft && (
         <SelectionToolbar
           anchor={sel}
@@ -494,7 +647,6 @@ function ReaderPage() {
         />
       )}
 
-      {/* 批注填写框 */}
       {noteDraft && (
         <AnnotationPopover
           quote={noteDraft.quote}
@@ -594,37 +746,54 @@ function ReaderPage() {
             <p className="text-xs text-fg-subtle">{book.title}</p>
           </SheetHeader>
           <div className="overflow-y-auto p-2">
-            {chapters.length > 0 ? (
-              chapters.map((ch, i) => (
-                <button
-                  key={ch.id}
-                  type="button"
-                  className={cn(
-                    "flex w-full items-start gap-3 rounded-[var(--radius-md)] px-3 py-3 text-left text-sm transition-colors hover:bg-bg-subtle",
-                    ch.id === chapter?.id && "bg-bg-subtle",
+            {chapters.length > 0
+              ? chapters.map((ch, i) => (
+                  <button
+                    key={ch.id}
+                    type="button"
+                    className={cn(
+                      "flex w-full items-start gap-3 rounded-[var(--radius-md)] px-3 py-3 text-left text-sm transition-colors hover:bg-bg-subtle",
+                      ch.id === chapter?.id && "bg-bg-subtle",
+                    )}
+                    onClick={() => {
+                      setChapterId(ch.id);
+                      setTocOpen(false);
+                      if (useText) {
+                        void navigate({
+                          to: "/read/$bookId",
+                          params: { bookId: book.id },
+                          search: { chapter: ch.id },
+                          replace: true,
+                        });
+                      }
+                    }}
+                  >
+                    <span className="w-6 shrink-0 text-fg-subtle">{i + 1}</span>
+                    <span>{ch.title}</span>
+                  </button>
+                ))
+              : epubToc.length > 0
+                ? epubToc.map((item, i) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="flex w-full items-start gap-3 rounded-[var(--radius-md)] px-3 py-3 text-left text-sm hover:bg-bg-subtle"
+                      onClick={() => {
+                        epubRef.current?.goToHref(item.href);
+                        setTocOpen(false);
+                      }}
+                    >
+                      <span className="w-6 shrink-0 text-fg-subtle">
+                        {i + 1}
+                      </span>
+                      <span>{item.label}</span>
+                    </button>
+                  ))
+                : (
+                    <p className="px-3 py-6 text-sm text-fg-muted">
+                      暂无目录。
+                    </p>
                   )}
-                  onClick={() => {
-                    setChapterId(ch.id);
-                    setTocOpen(false);
-                    if (useText) {
-                      void navigate({
-                        to: "/read/$bookId",
-                        params: { bookId: book.id },
-                        search: { chapter: ch.id },
-                        replace: true,
-                      });
-                    }
-                  }}
-                >
-                  <span className="w-6 shrink-0 text-fg-subtle">{i + 1}</span>
-                  <span>{ch.title}</span>
-                </button>
-              ))
-            ) : (
-              <p className="px-3 py-6 text-sm text-fg-muted">
-                当前格式使用翻页浏览。
-              </p>
-            )}
           </div>
         </SheetContent>
       </Sheet>
@@ -637,12 +806,38 @@ function ReaderPage() {
         >
           <SheetHeader>
             <h2 className="text-base font-medium">阅读设置</h2>
-            <p className="text-xs text-fg-subtle">设置会自动记住</p>
+            <p className="text-xs text-fg-subtle">
+              设置会自动记住
+              {user ? " · 进度登录后云同步" : ""}
+            </p>
           </SheetHeader>
           <div className="max-h-[calc(min(90dvh,680px)-5rem)] space-y-6 overflow-y-auto px-5 py-5 safe-pb">
+            {supportsDanmaku && (
+              <div className="flex items-center justify-between rounded-[var(--radius-lg)] border border-border bg-bg-subtle/40 px-3 py-3">
+                <div>
+                  <p className="text-sm font-medium">公版弹幕</p>
+                  <p className="text-xs text-fg-muted">
+                    段落下显示其他读者的评论
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleDanmaku}
+                  className={cn(
+                    "rounded-full px-3 py-1.5 text-xs font-medium",
+                    danmakuOn
+                      ? "bg-primary text-primary-fg"
+                      : "bg-bg-elevated text-fg-muted",
+                  )}
+                >
+                  {danmakuOn ? "开" : "关"}
+                </button>
+              </div>
+            )}
+
             <div
               className={cn(
-                "rounded-[var(--radius-lg)] px-4 py-4 text-sm transition-colors",
+                "rounded-[var(--radius-lg)] px-4 py-4 text-sm",
                 READER_THEME_META.find((t) => t.id === prefs.theme)
                   ?.sampleClass,
               )}
@@ -654,7 +849,7 @@ function ReaderPage() {
                 letterSpacing: `${prefs.letterSpacing}em`,
               }}
             >
-              子曰：学而时习之，不亦说乎？阅读的节奏，由你自己决定。
+              子曰：学而时习之，不亦说乎？
             </div>
 
             <div>
@@ -669,7 +864,7 @@ function ReaderPage() {
                     type="button"
                     onClick={() => updatePrefs({ theme: t.id })}
                     className={cn(
-                      "rounded-[var(--radius-md)] border px-1 py-3 text-center text-[11px] sm:text-xs",
+                      "rounded-[var(--radius-md)] border px-1 py-3 text-center text-[11px]",
                       t.sampleClass,
                       prefs.theme === t.id
                         ? "border-accent ring-2 ring-accent/50"
@@ -694,10 +889,10 @@ function ReaderPage() {
                     type="button"
                     onClick={() => updatePrefs({ font: f.id as ReaderFont })}
                     className={cn(
-                      "rounded-[var(--radius-md)] border px-3 py-3 text-left transition-colors",
+                      "rounded-[var(--radius-md)] border px-3 py-3 text-left",
                       prefs.font === f.id
                         ? "border-accent bg-bg-subtle ring-1 ring-accent/40"
-                        : "border-border bg-bg-elevated hover:bg-bg-subtle",
+                        : "border-border bg-bg-elevated",
                     )}
                   >
                     <span
@@ -777,7 +972,7 @@ function ReaderPage() {
               onChange={(v) => updatePrefs({ letterSpacing: v / 100 })}
             />
             <SliderRow
-              label={`版心宽度 ${prefs.maxWidth}`}
+              label={`版心 ${prefs.maxWidth}`}
               value={prefs.maxWidth}
               min={32}
               max={52}
@@ -791,22 +986,10 @@ function ReaderPage() {
               onChange={(v) => updatePrefs({ maxWidth: v })}
             />
 
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  setPrefs(DEFAULT_READER_PREFS);
-                  saveReaderPrefs(DEFAULT_READER_PREFS);
-                }}
-              >
-                恢复默认
-              </Button>
-              <Button className="flex-1" onClick={() => setSettingsOpen(false)}>
-                <X className="h-4 w-4" />
-                完成
-              </Button>
-            </div>
+            <Button className="w-full" onClick={() => setSettingsOpen(false)}>
+              <X className="h-4 w-4" />
+              完成
+            </Button>
           </div>
         </SheetContent>
       </Sheet>
