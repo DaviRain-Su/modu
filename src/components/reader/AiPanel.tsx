@@ -25,23 +25,32 @@ import {
 } from "@/lib/server/ai-conversations";
 import { createAnnotation } from "@/lib/server/social";
 import { cn, uid } from "@/lib/utils";
+import { useT } from "@/lib/i18n/locale";
 
-const quick: { action: AiAction; label: string; icon: typeof Sparkles }[] = [
-  { action: "explain", label: "解释", icon: MessageSquareText },
-  { action: "summary", label: "摘要", icon: ListTree },
-  { action: "translate", label: "翻译", icon: Languages },
-  { action: "insight", label: "洞见", icon: Lightbulb },
-];
+function makeQuick(t: { explain: string; summarize: string; translate: string; ask: string }) {
+  return [
+    { action: "explain" as AiAction, label: t.explain, icon: MessageSquareText },
+    { action: "summary" as AiAction, label: t.summarize, icon: ListTree },
+    { action: "translate" as AiAction, label: t.translate, icon: Languages },
+    { action: "insight" as AiAction, label: t.ask, icon: Lightbulb },
+  ];
+}
 
-const welcome = (signedIn: boolean): AiMessage => ({
-  id: "welcome",
-  role: "assistant",
-  content: signedIn
-    ? "我是墨读 AI 伴读（Pi 统一模型层）。选中正文即可解释 / 摘要 / 翻译；直接提问会保留多轮上下文，并同步到你的账户存储（Cloudflare R2 布局）。"
-    : "我是墨读 AI 伴读。游客可本地提问；登录后可多轮记忆、云端档案，并使用官方 / 自有 API（经 Pi）。",
-  kind: "chat",
-  createdAt: Date.now(),
-});
+function welcomeMsg(signedIn: boolean, en: boolean): AiMessage {
+  return {
+    id: "welcome",
+    role: "assistant",
+    content: signedIn
+      ? en
+        ? "I am Modu AI (Pi model layer). Select text to explain / summarize / translate. Free-form questions keep multi-turn context and sync to your account."
+        : "我是墨读 {t.ai.title}（Pi 统一模型层）。选中正文即可解释 / 摘要 / 翻译；直接提问会保留多轮上下文，并同步到你的账户存储。"
+      : en
+        ? "I am Modu AI. Guests can ask locally; sign in for multi-turn memory, cloud archive, and official / own API via Pi."
+        : "我是墨读 {t.ai.title}。游客可本地提问；登录后可多轮记忆、云端档案，并使用官方 / 自有 API（经 Pi）。",
+    kind: "chat",
+    createdAt: Date.now(),
+  };
+}
 
 export function AiPanel({
   bookId,
@@ -60,8 +69,11 @@ export function AiPanel({
   className?: string;
   onAnnotationCreated?: () => void;
 }) {
+  const t = useT();
   const { user } = useCurrentUserState();
-  const [messages, setMessages] = useState<AiMessage[]>([welcome(false)]);
+  const en = t.ai.send === "Send";
+  const quick = makeQuick(t.ai);
+  const [messages, setMessages] = useState<AiMessage[]>([welcomeMsg(false, false)]);
   const [input, setInput] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -72,10 +84,10 @@ export function AiPanel({
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setMessages([welcome(Boolean(user))]);
+    setMessages([welcomeMsg(Boolean(user), en)]);
     setConversationId(null);
     setStatusLine("");
-  }, [bookId, user?.id]);
+  }, [bookId, user?.id, en]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -97,7 +109,7 @@ export function AiPanel({
     try {
       const full = await getMyConversation({ data: id });
       if (!full) {
-        toast.error("对话不存在");
+        toast.error(t.common.error);
         return;
       }
       setConversationId(full.id);
@@ -125,7 +137,7 @@ export function AiPanel({
 
   function newChat() {
     setConversationId(null);
-    setMessages([welcome(Boolean(user))]);
+    setMessages([welcomeMsg(Boolean(user), en)]);
     setStatusLine("新对话");
     setHistoryOpen(false);
   }
@@ -256,7 +268,7 @@ export function AiPanel({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm font-medium">
             <Sparkles className="h-4 w-4 text-accent" />
-            AI 伴读
+            {t.ai.title}
           </div>
           <div className="flex items-center gap-1">
             {user && bookId ? (

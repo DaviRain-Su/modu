@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { Loader2, Lock, Send, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"
+import { useT } from "@/lib/i18n/locale";
 import type { HighlightColor } from "./SelectionToolbar";
 import { HIGHLIGHT_COLORS } from "./SelectionToolbar";
 
 /**
- * 选区批注框：引用选中句 + 填写想法 + 公开/私有
- * 对齐 empty 批注笔记 + liber note-pop
+ * 选区{t.annotate.title}框：引用选中句 + 填写想法 + 公开/私有
+ * 对齐 empty {t.annotate.title}笔记 + liber note-pop
  */
 export function AnnotationPopover({
   quote,
@@ -33,6 +34,12 @@ export function AnnotationPopover({
   }) => void | Promise<void>;
   onClose: () => void;
 }) {
+  const t = useT();
+  const colorLabel = {
+    gold: t.annotate.gold,
+    vermilion: t.annotate.red,
+    celadon: t.annotate.blue,
+  } as const;
   const [note, setNote] = useState("");
   const [isPublic, setIsPublic] = useState(
     defaultPublic !== false && !isPrivateBook,
@@ -53,7 +60,7 @@ export function AnnotationPopover({
       <button
         type="button"
         className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
-        aria-label="关闭批注"
+        aria-label="关闭{t.annotate.title}"
         onClick={onClose}
       />
       <div
@@ -64,14 +71,14 @@ export function AnnotationPopover({
         <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-border sm:hidden" />
         <div className="flex items-center justify-between px-4 pb-2 pt-3">
           <h2 id="anno-title" className="text-base font-medium">
-            写下批注
+            写下{t.annotate.title}
           </h2>
           <button
             type="button"
             className="text-sm text-fg-subtle hover:text-fg"
             onClick={onClose}
           >
-            取消
+            {t.annotate.cancel}
           </button>
         </div>
 
@@ -85,7 +92,7 @@ export function AnnotationPopover({
             <button
               key={c.id}
               type="button"
-              title={c.label}
+              title={colorLabel[c.id]}
               onClick={() => setLocalColor(c.id)}
               className={cn(
                 "h-7 w-7 rounded-full border-2 transition-transform",
@@ -151,7 +158,7 @@ export function AnnotationPopover({
         )}
         {!signedIn && isPublic && (
           <p className="mt-2 px-4 text-[11px] text-fg-subtle">
-            公开批注需登录；未登录时将只保存在本机。
+            公开{t.annotate.title}需登录；未登录时将只保存在本机。
           </p>
         )}
 

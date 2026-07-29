@@ -21,12 +21,14 @@ import {
   type AnnotationRow,
 } from "@/lib/server/social";
 import { formatBytes, formatCount } from "@/lib/utils";
+import { useT } from "@/lib/i18n/locale";
 
 export const Route = createFileRoute("/book/$bookId")({
   component: BookDetailPage,
 });
 
 function BookDetailPage() {
+  const t = useT();
   const { bookId } = Route.useParams();
   const navigate = useNavigate();
   const ready = useLibraryStore((s) => s.ready);
@@ -179,7 +181,7 @@ function BookDetailPage() {
               }
             >
               <BookOpen className="h-4 w-4" />
-              {pct > 0 ? "继续阅读" : "开始阅读"}
+              {pct > 0 ? t.shelf.continue : t.book.read}
             </Button>
             {onShelf ? (
               <Button

@@ -8,30 +8,27 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLocale, useT } from "@/lib/i18n/locale";
 
 export type HighlightColor = "gold" | "vermilion" | "celadon";
 
 export const HIGHLIGHT_COLORS: {
   id: HighlightColor;
-  label: string;
   swatch: string;
   mark: string;
 }[] = [
   {
     id: "gold",
-    label: "金",
     swatch: "bg-[#e5c55e]",
     mark: "bg-[#e5c55e]/35 underline decoration-[#e5c55e] decoration-2",
   },
   {
     id: "vermilion",
-    label: "朱",
     swatch: "bg-[#c0532f]",
     mark: "bg-[#c0532f]/25 underline decoration-[#c0532f] decoration-2",
   },
   {
     id: "celadon",
-    label: "青",
     swatch: "bg-[#5e8c7b]",
     mark: "bg-[#5e8c7b]/30 underline decoration-[#5e8c7b] decoration-2",
   },
@@ -67,7 +64,14 @@ export function SelectionToolbar({
   onCopy: () => void;
   onClose: () => void;
 }) {
+  const t = useT();
+  const { locale } = useLocale();
   const ref = useRef<HTMLDivElement>(null);
+  const colorLabel: Record<HighlightColor, string> = {
+    gold: t.annotate.gold,
+    vermilion: t.annotate.red,
+    celadon: t.annotate.blue,
+  };
 
   useEffect(() => {
     const el = ref.current;
@@ -98,7 +102,7 @@ export function SelectionToolbar({
           <button
             key={c.id}
             type="button"
-            title={c.label}
+            title={colorLabel[c.id]}
             className={cn(
               "h-7 w-7 rounded-full border border-border/60 shadow-sm transition-transform active:scale-95",
               c.swatch,
@@ -110,7 +114,7 @@ export function SelectionToolbar({
           type="button"
           className="ml-auto rounded-[var(--radius-sm)] p-1.5 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
           onClick={onClose}
-          aria-label="关闭"
+          aria-label={t.common.close}
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -120,14 +124,16 @@ export function SelectionToolbar({
           <ToolbarBtn
             icon={communityCount > 0 ? Users : MessageSquarePlus}
             label={
-              communityCount > 0 ? `想法 ${communityCount}` : "写想法"
+              communityCount > 0
+                ? `${communityCount} ${t.annotate.replies}`
+                : t.annotate.title
             }
             onClick={onThoughts}
             primary
           />
         )}
-        <ToolbarBtn icon={Sparkles} label="问 AI" onClick={onAskAi} />
-        <ToolbarBtn icon={Copy} label="复制" onClick={onCopy} />
+        <ToolbarBtn icon={Sparkles} label={t.ai.ask} onClick={onAskAi} />
+        <ToolbarBtn icon={Copy} label={locale === "en" ? "Copy" : "复制"} onClick={onCopy} />
       </div>
       <p className="line-clamp-2 border-t border-border px-3 py-2 text-[11px] leading-snug text-fg-muted">
         「{anchor.text.slice(0, 80)}

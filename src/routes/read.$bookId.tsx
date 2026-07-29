@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n/locale";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -86,6 +87,7 @@ function useIsLg() {
 }
 
 function ReaderPage() {
+  const t = useT();
   const { bookId } = Route.useParams();
   const { chapter: chapterParam } = Route.useSearch();
   const navigate = useNavigate();
@@ -519,7 +521,7 @@ function ReaderPage() {
                 variant="ghost"
                 size="icon-sm"
                 onClick={() => setTocOpen(true)}
-                aria-label="目录"
+                aria-label={t.reader.toc}
               >
                 <List className="h-4 w-4" />
               </Button>
@@ -528,7 +530,7 @@ function ReaderPage() {
               variant="ghost"
               size="icon-sm"
               onClick={() => setSettingsOpen(true)}
-              aria-label="阅读设置"
+              aria-label={t.reader.settings}
             >
               <Settings2 className="h-4 w-4" />
             </Button>
@@ -537,7 +539,7 @@ function ReaderPage() {
                 variant="ghost"
                 size="icon-sm"
                 onClick={() => setAiOpen((v) => !v)}
-                aria-label="AI 伴读"
+                aria-label={t.reader.ai}
               >
                 <PanelRight className="h-4 w-4" />
               </Button>
@@ -836,7 +838,7 @@ function ReaderPage() {
         <Sheet open={aiOpen} onOpenChange={setAiOpen}>
           <SheetContent
             side="bottom"
-            title="AI 伴读"
+            title={t.reader.ai}
             className="h-[min(88dvh,720px)] p-0"
           >
             <AiPanel
@@ -852,9 +854,9 @@ function ReaderPage() {
       )}
 
       <Sheet open={tocOpen} onOpenChange={setTocOpen}>
-        <SheetContent side="left" title="目录" className="w-full max-w-sm p-0">
+        <SheetContent side="left" title={t.reader.toc} className="w-full max-w-sm p-0">
           <SheetHeader>
-            <h2 className="text-base font-medium">目录</h2>
+            <h2 className="text-base font-medium">{t.reader.toc}</h2>
             <p className="text-xs text-fg-subtle">{book.title}</p>
           </SheetHeader>
           <div className="overflow-y-auto p-2">
@@ -913,11 +915,11 @@ function ReaderPage() {
       <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
         <SheetContent
           side="bottom"
-          title="阅读设置"
+          title={t.reader.settings}
           className="max-h-[min(90dvh,680px)] p-0"
         >
           <SheetHeader>
-            <h2 className="text-base font-medium">阅读设置</h2>
+            <h2 className="text-base font-medium">{t.reader.settings}</h2>
             <p className="text-xs text-fg-subtle">
               设置会自动记住
               {user ? " · 进度登录后云同步" : ""}

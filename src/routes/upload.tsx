@@ -37,12 +37,25 @@ export const Route = createFileRoute("/upload")({
 
 type Mode = "private" | "community_pd";
 
-const PHASE_LABEL: Record<string, string> = {
-  parsing: "正在解析…",
-  storing: "正在保存…",
-  contributing: "正在提交社区公版…",
-  indexing: "正在加入书架…",
-};
+function phaseLabel(
+  phase: string | null,
+  labels: {
+    busy: string;
+    phaseParsing: string;
+    phaseStoring: string;
+    phaseContributing: string;
+    phaseIndexing: string;
+  },
+): string {
+  if (!phase) return labels.busy;
+  const map: Record<string, string> = {
+    parsing: labels.phaseParsing,
+    storing: labels.phaseStoring,
+    contributing: labels.phaseContributing,
+    indexing: labels.phaseIndexing,
+  };
+  return map[phase] || labels.busy;
+}
 
 function UploadPage() {
   const t = useT();
@@ -115,11 +128,7 @@ function UploadPage() {
           (p) => setPhase(p),
           user?.id,
         );
-        toast.success(
-          user
-            ? "已加入个人书架，元数据已同步账户（文件优先写对象存储）"
-            : "已加入本机书架（私有）",
-        );
+        toast.success(t.upload.successPrivate);
         void navigate({ to: "/read/$bookId", params: { bookId: book.id } });
         return;
       }
@@ -163,13 +172,13 @@ function UploadPage() {
       addToShelf(book.id);
       void refreshCommunity();
       toast.success(
-        (result as { truncated?: boolean }).truncated
-          ? "已发布到社区公版（正文较长，已自动收录可展示章节）"
-          : "已发布到社区公版书城（用户声明）",
+        result.truncated
+          ? t.upload.successCommunityTrunc
+          : t.upload.successCommunity,
       );
       void navigate({ to: "/book/$bookId", params: { bookId: book.id } });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "上传失败");
+      toast.error(e instanceof Error ? e.message : t.common.error);
     } finally {
       setBusy(false);
       setPhase(null);
@@ -185,14 +194,14 @@ function UploadPage() {
           {t.upload.title}
         </h1>
         <p className="mt-1 text-fg-muted">
-          推荐 EPUB（完整目录与重排版）。默认私有；公版可声明上架。PDF 暂不重点支持。
+          {t.upload.lead}
         </p>
       </div>
 
       <div className="rounded-[var(--radius-xl)] border border-accent/30 bg-accent/5 px-4 py-4 text-sm leading-relaxed text-fg-muted">
         <div className="mb-2 flex items-center gap-2 font-medium text-fg">
           <Scale className="h-4 w-4 text-accent" />
-          怎么保证是公版？
+          {t.upload.policyTitle}
         </div>
         <p className="mb-2">{COPYRIGHT_POLICY_SUMMARY.verify}</p>
         <ul className="list-disc space-y-1 pl-5">
@@ -212,13 +221,13 @@ function UploadPage() {
           [
             {
               id: "private" as const,
-              t: "仅私有阅读",
-              d: "不进书城，只有你能看正文",
+              label: t.upload.private,
+              d: t.upload.privateHint,
             },
             {
               id: "community_pd" as const,
-              t: "声明公版并上架",
-              d: "进入「社区公版」，大家可读",
+              label: t.upload.community,
+              d: t.upload.communityHint,
             },
           ] as const
         ).map((m) => (
@@ -232,7 +241,7 @@ function UploadPage() {
                 : "border-border bg-bg-elevated hover:bg-bg-subtle"
             }`}
           >
-            <p className="text-sm font-medium">{m.t}</p>
+            <p className="text-sm font-medium">{m.label}</p>
             <p className="mt-1 text-xs text-fg-muted">{m.d}</p>
           </button>
         ))}
@@ -240,12 +249,12 @@ function UploadPage() {
 
       {mode === "community_pd" && !isPending && !user && (
         <div className="rounded-[var(--radius-lg)] border border-border bg-bg-subtle/60 px-3 py-3 text-sm text-fg-muted">
-          贡献公版需要登录，以便记录贡献者并接受举报处理。{" "}
+          {t.upload.needLogin}.{" "}
           <Link
             to="/login"
             className="text-fg underline-offset-2 hover:underline"
           >
-            去登录
+            {t.account.goLogin}
           </Link>
         </div>
       )}
@@ -255,7 +264,7 @@ function UploadPage() {
           <div className="flex items-center gap-2">
             <Cloud className="h-4 w-4 text-accent" />
             <CardTitle className="text-base">
-              {mode === "private" ? "私有存储" : "社区公版提交"}
+              {mode === "private" ? t.upload.private : t.upload.community}
             </CardTitle>
           </div>
           <div className="mt-2 flex flex-wrap gap-2 text-sm text-fg-muted">
@@ -289,7 +298,7 @@ function UploadPage() {
             </div>
             <p className="text-sm font-medium">拖拽或选择文件</p>
             <p className="mt-1 text-xs text-fg-subtle">
-              优先 EPUB · 亦支持 TXT/MD · 最大 80MB（PDF 可上传但体验有限）
+              {t.upload.formats} · {t.upload.maxSize}
             </p>
             <label className="mt-4">
               <input
@@ -319,7 +328,7 @@ function UploadPage() {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <label className="text-xs text-fg-muted">书名</label>
+              <label className="text-xs text-fg-muted">{t.upload.titleField}</label>
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -327,7 +336,7 @@ function UploadPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs text-fg-muted">作者</label>
+              <label className="text-xs text-fg-muted">{t.upload.authorField}</label>
               <Input
                 value={author}
                 onChange={(e) => setAuthor(e.target.value)}
@@ -430,7 +439,7 @@ function UploadPage() {
             {busy ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {phase ? PHASE_LABEL[phase] || "处理中…" : "处理中…"}
+                {phase ? phaseLabel(phase, t.upload) || "处理中…" : "处理中…"}
               </>
             ) : mode === "private" ? (
               <>

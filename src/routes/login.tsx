@@ -211,15 +211,13 @@ function LoginPage() {
           <ul className="space-y-1.5">
             <li>
               ·{" "}
-              <strong className="text-fg">邮箱可直接注册/登录</strong>
-              。若提示密码错误，多半是站点重新发布后预览库被清空——请重新注册同一个邮箱即可。
+              {t.login.aboutEmail}
             </li>
             <li>
               · {t.login.aboutSocial}
             </li>
             <li>
-              · 要让账号<strong className="text-fg">永久保存</strong>
-              ，请按 README 接 Cloudflare D1（MODU_CF_API_URL）或 DATABASE_URL。
+              · {t.login.aboutPersist}
             </li>
           </ul>
         </div>
@@ -256,7 +254,7 @@ function LoginPage() {
                       )}
                       <span>
                         {loading
-                          ? `正在打开 ${providerShort(p.providerId)}…`
+                          ? `${t.login.opening} ${providerShort(p.providerId)}…`
                           : providerLabel(p.providerId, p.label, { google: t.login.continueGoogle, x: t.login.continueX })}
                       </span>
                     </button>
@@ -277,11 +275,11 @@ function LoginPage() {
               >
                 {mode === "signup" && (
                   <div className="space-y-1.5">
-                    <label className="text-xs text-fg-muted">昵称</label>
+                    <label className="text-xs text-fg-muted">{t.login.name}</label>
                     <Input
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="怎么称呼你"
+                      placeholder={t.login.namePh}
                       autoComplete="nickname"
                     />
                   </div>
@@ -305,7 +303,7 @@ function LoginPage() {
                     minLength={8}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="至少 8 位"
+                    placeholder={t.login.passwordPh}
                     autoComplete={
                       mode === "signup" ? "new-password" : "current-password"
                     }
@@ -336,7 +334,7 @@ function LoginPage() {
                       className="text-fg underline-offset-4 hover:underline"
                       onClick={() => setMode("signup")}
                     >
-                      注册
+                      {t.login.signUp}
                     </button>
                   </>
                 ) : (
@@ -347,14 +345,14 @@ function LoginPage() {
                       className="text-fg underline-offset-4 hover:underline"
                       onClick={() => setMode("signin")}
                     >
-                      登录
+                      {t.nav.login}
                     </button>
                   </>
                 )}
               </p>
             </>
           ) : (
-            <p className="text-sm text-fg-muted">当前已关闭登录功能。</p>
+            <p className="text-sm text-fg-muted">{t.login.disabled}</p>
           )}
         </CardContent>
       </Card>

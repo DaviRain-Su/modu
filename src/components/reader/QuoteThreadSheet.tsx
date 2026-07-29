@@ -7,7 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import type { AnnotationRow, QuoteThread } from "@/lib/server/social";
 import { createAnnotation } from "@/lib/server/social";
 import { quotesMatch } from "@/lib/reader/quote-key";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"
+import { useT } from "@/lib/i18n/locale";
 
 /**
  * 同一句划线上的多人想法：
@@ -34,6 +35,7 @@ export function QuoteThreadSheet({
   onClose: () => void;
   onPosted: (row: AnnotationRow) => void;
 }) {
+  const t = useT();
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -66,7 +68,7 @@ export function QuoteThreadSheet({
       return;
     }
     if (!canPublic) {
-      toast.error("仅公版书支持多人共读想法");
+      toast.error("仅公版书支持多人{t.annotate.thread}");
       return;
     }
     setBusy(true);
@@ -147,7 +149,7 @@ export function QuoteThreadSheet({
         <div className="min-h-0 flex-1 overflow-y-auto px-4">
           {items.length === 0 ? (
             <p className="py-6 text-center text-sm text-fg-subtle">
-              还没有人在这句留下想法。
+              {t.annotate.noReplies}。
               <br />
               成为第一个？
             </p>
@@ -178,7 +180,7 @@ export function QuoteThreadSheet({
         <div className="border-t border-border p-4 safe-pb">
           {!canPublic ? (
             <p className="text-center text-xs text-fg-subtle">
-              私有图书不公开共读想法
+              私有图书不公开{t.annotate.thread}
             </p>
           ) : !signedIn ? (
             <p className="text-center text-sm text-fg-muted">

@@ -105,12 +105,10 @@ function LandingPage() {
         <div>
           <div className="mb-3 flex items-center gap-2 text-sm text-fg-muted">
             <Cloud className="h-4 w-4 text-accent" />
-            {locale === "en" ? "Storage" : "存储"} · {storage.label}
+            {t.landing.storage} · {storage.label}
           </div>
           <h2 className="font-serif text-2xl font-medium tracking-tight sm:text-3xl">
-            {locale === "en"
-              ? "Ask as you read — notes stay in your archive"
-              : "边读边问，记录留在你的档案里"}
+            {t.landing.askAsYouRead}
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-fg-muted sm:text-base">
             {storage.detail}
@@ -121,7 +119,7 @@ function LandingPage() {
                 to="/read/$bookId"
                 params={{ bookId: market[0]?.id || "pd_lunyu" }}
               >
-                {locale === "en" ? "Try a PD sample" : "试读公版"}
+                {t.landing.trySample}
               </Link>
             </Button>
             <Button asChild variant="outline">
@@ -134,7 +132,7 @@ function LandingPage() {
         </div>
         <div className="rounded-[var(--radius-xl)] border border-border bg-paper p-6 text-paper-fg shadow-[var(--shadow-soft)]">
           <p className="text-xs uppercase tracking-wider text-paper-muted">
-            {locale === "en" ? "Public-domain sample" : "公版试读"}
+            {t.landing.sampleLabel}
           </p>
           <p className="mt-3 font-serif text-lg leading-relaxed">
             {market[0]?.chapters?.[0]?.content.slice(0, 160)}…

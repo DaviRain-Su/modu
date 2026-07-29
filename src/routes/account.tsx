@@ -29,7 +29,7 @@ export const Route = createFileRoute("/account")({
 const PLANS = [
   {
     id: "free" as const,
-    name: "免费",
+    name: "Free / 免费",
     price: "¥0",
     perks: ["书城与阅读器", "公开批注", "官方 AI 每日额度", "对话云端档案"],
   },
@@ -171,16 +171,16 @@ function AccountPage() {
           <div className="mt-1 flex flex-wrap items-center gap-2 text-fg-muted">
             <span>{user.primaryEmail ?? user.displayName}</span>
             <span>·</span>
-            <span>当前订阅</span>
+            <span>{t.account.currentPlan}</span>
             <Badge variant="accent">{plan}</Badge>
             <span className="text-xs text-fg-subtle">
-              · 伴读对话 {convoCount} 段
+              · {t.account.conversations} {convoCount}
             </span>
           </div>
         </div>
         <Button asChild variant="secondary">
           <Link to="/u/$userId" params={{ userId: user.id }}>
-            我的主页
+            {t.account.profile}
           </Link>
         </Button>
       </div>
@@ -191,27 +191,27 @@ function AccountPage() {
         <>
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">个人资料</CardTitle>
+              <CardTitle className="text-base">{t.account.profile}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-1.5">
-                <label className="text-xs text-fg-muted">显示名</label>
+                <label className="text-xs text-fg-muted">{t.account.displayName}</label>
                 <Input
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs text-fg-muted">简介</label>
+                <label className="text-xs text-fg-muted">{t.account.bio}</label>
                 <Textarea
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
-                  placeholder="一句话介绍你的阅读品味"
+                  placeholder={t.account.bio}
                   rows={3}
                 />
               </div>
               <Button onClick={() => void saveProfile()} disabled={saving}>
-                保存资料
+                {t.account.saveProfile}
               </Button>
             </CardContent>
           </Card>
@@ -220,11 +220,10 @@ function AccountPage() {
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-accent" />
-                <CardTitle className="text-base">AI · Pi 内核</CardTitle>
+                <CardTitle className="text-base">{t.account.ai}</CardTitle>
               </div>
               <p className="text-sm text-fg-muted">
-                阅读器内边读边问；多轮对话写入你的账户档案（Cloudflare R2 key
-                布局）。模型经{" "}
+                {t.account.aiHint}{" "}
                 <a
                   href="https://pi.dev"
                   target="_blank"
@@ -232,9 +231,7 @@ function AccountPage() {
                   className="text-fg underline-offset-2 hover:underline"
                 >
                   pi.dev
-                </a>{" "}
-                的 <code className="text-xs">@earendil-works/pi-ai</code>{" "}
-                统一调度。
+                </a>
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -314,13 +311,13 @@ function AccountPage() {
               </div>
 
               <Button onClick={() => void saveAi()} disabled={saving}>
-                保存 AI 设置
+                {t.account.saveAi}
               </Button>
             </CardContent>
           </Card>
 
           <section>
-            <h2 className="mb-3 font-serif text-xl font-medium">官方订阅</h2>
+            <h2 className="mb-3 font-serif text-xl font-medium">{t.account.plan}</h2>
             <p className="mb-4 text-sm text-fg-muted">
               不使用自有 API 时，用官方额度。以下为演示开通（无真实支付）。
             </p>

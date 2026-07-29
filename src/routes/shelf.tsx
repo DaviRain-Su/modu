@@ -23,12 +23,12 @@ function ShelfPage() {
   const rest = books.filter((b) => !reading.includes(b));
 
   const progressHint = !user
-    ? "进度保存在本机"
+    ? t.shelf.progressLocal
     : syncing
-      ? "正在同步云端书架…"
+      ? t.shelf.progressSyncing
       : cloudUserId
-        ? "进度与书架已与账户同步"
-        : "登录后可同步进度与书架";
+        ? t.shelf.progressSynced
+        : t.shelf.progressLogin;
 
   return (
     <div className="space-y-8">
@@ -36,7 +36,7 @@ function ShelfPage() {
         <div>
           <h1 className="font-serif text-3xl font-medium tracking-tight">{t.shelf.title}</h1>
           <p className="mt-1 text-fg-muted">
-            {ready ? `${books.length} · ${progressHint}` : t.common.loading}
+            {ready ? `${books.length} ${t.shelf.booksCount} · ${progressHint}` : t.common.loading}
           </p>
         </div>
         <div className="flex gap-2">
@@ -61,7 +61,7 @@ function ShelfPage() {
           </div>
           <h2 className="text-lg font-medium">{t.shelf.empty}</h2>
           <p className="mt-2 max-w-sm text-sm text-fg-muted">
-            {t.shelf.lead}
+            {t.shelf.emptyHint}
           </p>
           <div className="mt-6 flex gap-2">
             <Button asChild>

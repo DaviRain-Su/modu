@@ -194,7 +194,7 @@ function LibraryPage() {
         <p className="py-16 text-center text-sm text-fg-muted">
           {tab === "community"
             ? "还没有社区公版。登录后上传并声明公版即可贡献。"
-            : "没有匹配的书，试试其他关键词。"}
+            : "{t.library.empty}，试试其他关键词。"}
         </p>
       ) : view === "grid" ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">

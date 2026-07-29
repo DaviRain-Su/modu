@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n/locale";
 import {
   useCallback,
   useEffect,
@@ -96,6 +97,7 @@ export function TextReader({
   onSelect: (anchor: SelectionAnchor | null) => void;
   onChapterNav?: (dir: "prev" | "next") => void;
 }) {
+  const t = useT();
   const chapters = book.chapters ?? [];
   const chapterIndex = Math.max(
     0,
@@ -609,7 +611,7 @@ export function TextReader({
       <button
         type="button"
         className="rd-tap left"
-        aria-label="上一页"
+        aria-label={t.reader.prev}
         data-page-turn="prev"
         onClick={(e) => {
           e.stopPropagation();
@@ -619,7 +621,7 @@ export function TextReader({
       <button
         type="button"
         className="rd-tap right"
-        aria-label="下一页"
+        aria-label={t.reader.next}
         data-page-turn="next"
         onClick={(e) => {
           e.stopPropagation();
@@ -630,7 +632,7 @@ export function TextReader({
       <button
         type="button"
         className="rd-pg-arrow left"
-        aria-label="上一页"
+        aria-label={t.reader.prev}
         data-page-turn="prev"
         onClick={(e) => {
           e.stopPropagation();
@@ -642,7 +644,7 @@ export function TextReader({
       <button
         type="button"
         className="rd-pg-arrow right"
-        aria-label="下一页"
+        aria-label={t.reader.next}
         data-page-turn="next"
         onClick={(e) => {
           e.stopPropagation();

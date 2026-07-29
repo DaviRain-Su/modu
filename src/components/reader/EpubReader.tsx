@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n/locale";
 import {
   forwardRef,
   useEffect,
@@ -75,11 +76,12 @@ export const EpubReader = forwardRef<
   },
   ref,
 ) {
+  const t = useT();
   const hostRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [spreadLabel, setSpreadLabel] = useState("单页");
+  const [spreadLabel, setSpreadLabel] = useState("");
   const [pageHint, setPageHint] = useState("");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renditionRef = useRef<any>(null);
@@ -182,7 +184,7 @@ export const EpubReader = forwardRef<
     const mode = resolveSpread(shell.clientWidth);
     try {
       r.spread(mode);
-      setSpreadLabel(mode === "always" ? "双页" : "单页");
+      setSpreadLabel(mode === "always" ? t.reader.doublePage : t.reader.singlePage);
     } catch {
       /* ignore */
     }
@@ -444,7 +446,7 @@ export const EpubReader = forwardRef<
       className="rd-epub-shell relative flex h-full min-h-0 flex-col"
       style={{ background: bg, color: fg }}
       data-reader="epub"
-      data-spread={spreadLabel === "双页" ? "double" : "single"}
+      data-spread={spreadLabel === t.reader.doublePage ? "double" : "single"}
       onTouchStart={(e) => {
         touchX.current = e.changedTouches[0]?.clientX ?? null;
       }}
@@ -489,7 +491,7 @@ export const EpubReader = forwardRef<
           <button
             type="button"
             className="rd-tap left"
-            aria-label="上一页"
+            aria-label={t.reader.prev}
             data-page-turn="prev"
             onClick={(e) => {
               e.stopPropagation();
@@ -499,7 +501,7 @@ export const EpubReader = forwardRef<
           <button
             type="button"
             className="rd-tap right"
-            aria-label="下一页"
+            aria-label={t.reader.next}
             data-page-turn="next"
             onClick={(e) => {
               e.stopPropagation();
@@ -509,7 +511,7 @@ export const EpubReader = forwardRef<
           <button
             type="button"
             className="rd-pg-arrow left"
-            aria-label="上一页"
+            aria-label={t.reader.prev}
             data-page-turn="prev"
             onClick={(e) => {
               e.stopPropagation();
@@ -521,7 +523,7 @@ export const EpubReader = forwardRef<
           <button
             type="button"
             className="rd-pg-arrow right"
-            aria-label="下一页"
+            aria-label={t.reader.next}
             data-page-turn="next"
             onClick={(e) => {
               e.stopPropagation();

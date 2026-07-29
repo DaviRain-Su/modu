@@ -68,28 +68,23 @@ function RankingsPage() {
     <div className="space-y-10">
       <div>
         <h1 className="font-serif text-3xl font-medium tracking-tight">
-          内部榜单
+          {t.rankings.title}
         </h1>
         <p className="mt-1 text-fg-muted">
-          公版书热度 + 读者公开评论/摘要 · 私有书正文永不公开展示
+          {t.rankings.lead}
         </p>
       </div>
 
       <div className="flex items-start gap-2 rounded-[var(--radius-lg)] border border-border bg-bg-subtle/50 px-3 py-3 text-xs leading-relaxed text-fg-muted">
         <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
-        <p>
-          {t.rankings.title}仅含<strong className="text-fg">公版书城</strong>
-          书目。私有上传可贡献阅读次数到系统统计，但留言板只显示你的
-          <strong className="text-fg">评论/摘要</strong>
-          ，不展示书名与原文。
-        </p>
+        <p>{t.rankings.lead}</p>
       </div>
 
       <section>
         <div className="mb-4 flex items-center gap-2 text-sm font-medium text-fg-muted">
           <Flame className="h-4 w-4 text-accent" />
-          公版热门
-          {!ready && <span className="text-xs">加载中…</span>}
+          {t.rankings.hot}
+          {!ready && <span className="text-xs">{t.common.loading}</span>}
         </div>
         <div className="space-y-2">
           {displayHot.map((row, i) => {
@@ -111,13 +106,13 @@ function RankingsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate font-medium">{book.title}</p>
-                    <Badge variant="outline">公版</Badge>
+                    <Badge variant="outline">{t.common.publicDomain}</Badge>
                   </div>
                   <p className="truncate text-sm text-fg-muted">{book.author}</p>
                 </div>
                 <div className="hidden text-right text-xs text-fg-subtle sm:block">
-                  <p>阅读 {formatCount(row.readCount)}</p>
-                  <p>批注 {row.annotationCount}</p>
+                  <p>{formatCount(row.readCount)} {t.rankings.reads}</p>
+                  <p>{row.annotationCount} {t.annotate.replies}</p>
                 </div>
               </Link>
             );
@@ -128,11 +123,11 @@ function RankingsPage() {
       <section>
         <div className="mb-4 flex items-center gap-2 text-sm font-medium text-fg-muted">
           <MessageSquareQuote className="h-4 w-4 text-accent" />
-          公开留言 · 摘要
+          {t.rankings.notes}
         </div>
         {notes.length === 0 ? (
           <p className="rounded-[var(--radius-xl)] border border-dashed border-border py-12 text-center text-sm text-fg-muted">
-            还没有公开评论。读公版书时写下批注，或对私有书只公开你的摘要。
+            {t.rankings.empty}
           </p>
         ) : (
           <div className="space-y-3">
