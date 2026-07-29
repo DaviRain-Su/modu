@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
+  AlignLeft,
   ChevronLeft,
   List,
   Minus,
@@ -8,6 +9,7 @@ import {
   Plus,
   Settings2,
   Sparkles,
+  Type,
   X,
 } from "lucide-react";
 import { z } from "zod";
@@ -21,6 +23,16 @@ import { useLibraryStore } from "@/lib/store/library";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { recordBookRead } from "@/lib/server/social";
 import type { Book, ReadingProgress } from "@/lib/books/types";
+import {
+  DEFAULT_READER_PREFS,
+  loadReaderPrefs,
+  READER_FONT_META,
+  READER_THEME_META,
+  saveReaderPrefs,
+  type ReaderFont,
+  type ReaderPrefs,
+  type ReaderTheme,
+} from "@/lib/reader/prefs";
 import { cn } from "@/lib/utils";
 
 const searchSchema = z.object({
@@ -31,8 +43,6 @@ export const Route = createFileRoute("/read/$bookId")({
   validateSearch: searchSchema,
   component: ReaderPage,
 });
-
-type Theme = "paper" | "sepia" | "night";
 
 function useIsLg() {
   const [lg, setLg] = useState(false);
@@ -62,6 +72,22 @@ function ReaderPage() {
   const [book, setBook] = useState<Book | null | undefined>(undefined);
   const stored = getProgress(bookId);
 
+  const [prefs, setPrefs] = useState<ReaderPrefs>(DEFAULT_READER_PREFS);
+  const [prefsReady, setPrefsReady] = useState(false);
+
+  useEffect(() => {
+    setPrefs(loadReaderPrefs());
+    setPrefsReady(true);
+  }, []);
+
+  const updatePrefs = useCallback((patch: Partial<ReaderPrefs>) => {
+    setPrefs((prev) => {
+      const next = { ...prev, ...patch };
+      saveReaderPrefs(next);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!ready) return;
     const local = getBook(bookId);
@@ -76,9 +102,6 @@ function ReaderPage() {
   const [chapterId, setChapterId] = useState(
     chapterParam || stored?.lastChapterId || "",
   );
-  const [fontSize, setFontSize] = useState(18);
-  const [lineHeight, setLineHeight] = useState(1.85);
-  const [theme, setTheme] = useState<Theme>("paper");
   const [chromeVisible, setChromeVisible] = useState(true);
   const [aiOpen, setAiOpen] = useState(false);
   const [tocOpen, setTocOpen] = useState(false);
@@ -129,7 +152,15 @@ function ReaderPage() {
       };
       void saveProgress(next);
     },
-    [book, chapter?.id, chapterId, page, saveProgress, stored?.bookmarks, stored?.highlights],
+    [
+      book,
+      chapter?.id,
+      chapterId,
+      page,
+      saveProgress,
+      stored?.bookmarks,
+      stored?.highlights,
+    ],
   );
 
   const onProgress = useCallback(
@@ -163,7 +194,7 @@ function ReaderPage() {
     );
   }
 
-  if (!book) {
+  if (!book || !prefsReady) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-paper text-paper-muted">
         加载中…
@@ -173,7 +204,6 @@ function ReaderPage() {
 
   const chapterIndex = chapters.findIndex((c) => c.id === chapter?.id);
   const showToc = chapters.length > 0 || book.format === "epub";
-  // Community PD and market text books use TextReader
   const useText =
     book.format === "text" ||
     (book.source === "community" && Boolean(chapter?.content));
@@ -181,7 +211,7 @@ function ReaderPage() {
   return (
     <div className="relative flex h-dvh flex-col bg-bg text-fg">
       {chromeVisible && (
-        <header className="z-30 shrink-0 border-b border-border bg-bg safe-pt">
+        <header className="z-30 shrink-0 border-b border-border bg-bg/95 backdrop-blur-sm safe-pt">
           <div className="flex h-12 items-center gap-1 px-2 sm:h-14 sm:px-3">
             <Button
               variant="ghost"
@@ -218,7 +248,7 @@ function ReaderPage() {
               variant="ghost"
               size="icon-sm"
               onClick={() => setSettingsOpen(true)}
-              aria-label="设置"
+              aria-label="阅读设置"
             >
               <Settings2 className="h-4 w-4" />
             </Button>
@@ -273,9 +303,12 @@ function ReaderPage() {
             <TextReader
               book={book}
               chapter={chapter}
-              fontSize={fontSize}
-              lineHeight={lineHeight}
-              theme={theme}
+              fontSize={prefs.fontSize}
+              lineHeight={prefs.lineHeight}
+              letterSpacing={prefs.letterSpacing}
+              maxWidth={prefs.maxWidth}
+              font={prefs.font}
+              theme={prefs.theme}
               onProgress={onProgress}
               onSelectText={onSelectText}
             />
@@ -283,7 +316,7 @@ function ReaderPage() {
           {!useText && book.format === "pdf" && book.storageKey && (
             <PdfReader
               storageKey={book.storageKey}
-              theme={theme}
+              theme={prefs.theme}
               initialPage={page}
               onProgress={onProgress}
               onPageChange={setPage}
@@ -294,8 +327,10 @@ function ReaderPage() {
           {!useText && book.format === "epub" && book.storageKey && (
             <EpubReader
               storageKey={book.storageKey}
-              theme={theme}
-              fontSize={fontSize}
+              theme={prefs.theme}
+              fontSize={prefs.fontSize}
+              font={prefs.font}
+              lineHeight={prefs.lineHeight}
               onProgress={onProgress}
               onSelectText={onSelectText}
             />
@@ -428,74 +463,247 @@ function ReaderPage() {
       </Sheet>
 
       <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <SheetContent side="bottom" title="阅读设置" className="p-0">
+        <SheetContent
+          side="bottom"
+          title="阅读设置"
+          className="max-h-[min(90dvh,680px)] p-0"
+        >
           <SheetHeader>
             <h2 className="text-base font-medium">阅读设置</h2>
+            <p className="text-xs text-fg-subtle">设置会自动记住</p>
           </SheetHeader>
-          <div className="space-y-6 px-5 py-5 safe-pb">
+          <div className="max-h-[calc(min(90dvh,680px)-5rem)] space-y-6 overflow-y-auto px-5 py-5 safe-pb">
+            {/* Preview strip */}
+            <div
+              className={cn(
+                "rounded-[var(--radius-lg)] px-4 py-4 text-sm transition-colors",
+                READER_THEME_META.find((t) => t.id === prefs.theme)
+                  ?.sampleClass,
+              )}
+              style={{
+                fontFamily: READER_FONT_META.find((f) => f.id === prefs.font)
+                  ?.family,
+                fontSize: prefs.fontSize,
+                lineHeight: prefs.lineHeight,
+                letterSpacing: `${prefs.letterSpacing}em`,
+              }}
+            >
+              子曰：学而时习之，不亦说乎？阅读的节奏，由你自己决定。
+            </div>
+
             <div>
-              <p className="mb-2 text-xs text-fg-muted">主题</p>
-              <div className="grid grid-cols-3 gap-2">
-                {(
-                  [
-                    ["paper", "纸张", "bg-[#f4efe6] text-[#1c1915]"],
-                    ["sepia", "羊皮纸", "bg-[#efe6d4] text-[#3a3226]"],
-                    ["night", "夜间", "bg-[#121212] text-[#e8e4dc]"],
-                  ] as const
-                ).map(([key, label, cls]) => (
+              <p className="mb-2 flex items-center gap-1.5 text-xs text-fg-muted">
+                <Type className="h-3.5 w-3.5" />
+                阅读背景
+              </p>
+              <div className="grid grid-cols-5 gap-2">
+                {READER_THEME_META.map((t) => (
                   <button
-                    key={key}
+                    key={t.id}
                     type="button"
-                    onClick={() => setTheme(key)}
+                    onClick={() => updatePrefs({ theme: t.id })}
                     className={cn(
-                      "rounded-[var(--radius-md)] border px-3 py-3 text-sm",
-                      cls,
-                      theme === key
-                        ? "border-accent ring-1 ring-accent"
+                      "rounded-[var(--radius-md)] border px-1 py-3 text-center text-[11px] sm:text-xs",
+                      t.sampleClass,
+                      prefs.theme === t.id
+                        ? "border-accent ring-2 ring-accent/50"
                         : "border-border",
                     )}
                   >
-                    {label}
+                    {t.label}
                   </button>
                 ))}
               </div>
             </div>
+
             <div>
-              <p className="mb-2 text-xs text-fg-muted">字号 {fontSize}px</p>
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="secondary"
-                  size="icon-sm"
-                  onClick={() => setFontSize((s) => Math.max(14, s - 1))}
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <div className="h-1.5 flex-1 rounded-full bg-bg-subtle">
-                  <div
-                    className="h-full rounded-full bg-accent"
-                    style={{ width: `${((fontSize - 14) / 10) * 100}%` }}
-                  />
-                </div>
-                <Button
-                  variant="secondary"
-                  size="icon-sm"
-                  onClick={() => setFontSize((s) => Math.min(24, s + 1))}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
+              <p className="mb-2 flex items-center gap-1.5 text-xs text-fg-muted">
+                <AlignLeft className="h-3.5 w-3.5" />
+                字体
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {READER_FONT_META.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => updatePrefs({ font: f.id as ReaderFont })}
+                    className={cn(
+                      "rounded-[var(--radius-md)] border px-3 py-3 text-left transition-colors",
+                      prefs.font === f.id
+                        ? "border-accent bg-bg-subtle ring-1 ring-accent/40"
+                        : "border-border bg-bg-elevated hover:bg-bg-subtle",
+                    )}
+                  >
+                    <span
+                      className="block text-sm font-medium"
+                      style={{ fontFamily: f.family }}
+                    >
+                      {f.label}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-fg-subtle">
+                      {f.hint}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setSettingsOpen(false)}
-            >
-              <X className="h-4 w-4" />
-              完成
-            </Button>
+
+            <SliderRow
+              label={`字号 ${prefs.fontSize}px`}
+              value={prefs.fontSize}
+              min={14}
+              max={28}
+              step={1}
+              onDec={() =>
+                updatePrefs({
+                  fontSize: Math.max(14, prefs.fontSize - 1),
+                })
+              }
+              onInc={() =>
+                updatePrefs({
+                  fontSize: Math.min(28, prefs.fontSize + 1),
+                })
+              }
+              onChange={(v) => updatePrefs({ fontSize: v })}
+            />
+
+            <SliderRow
+              label={`行距 ${prefs.lineHeight.toFixed(1)}`}
+              value={Math.round(prefs.lineHeight * 10)}
+              min={15}
+              max={24}
+              step={1}
+              display={prefs.lineHeight.toFixed(1)}
+              onDec={() =>
+                updatePrefs({
+                  lineHeight: Math.max(
+                    1.5,
+                    Math.round((prefs.lineHeight - 0.1) * 10) / 10,
+                  ),
+                })
+              }
+              onInc={() =>
+                updatePrefs({
+                  lineHeight: Math.min(
+                    2.4,
+                    Math.round((prefs.lineHeight + 0.1) * 10) / 10,
+                  ),
+                })
+              }
+              onChange={(v) => updatePrefs({ lineHeight: v / 10 })}
+            />
+
+            <SliderRow
+              label={`字距 ${(prefs.letterSpacing * 100).toFixed(0)}%`}
+              value={Math.round(prefs.letterSpacing * 100)}
+              min={0}
+              max={12}
+              step={1}
+              onDec={() =>
+                updatePrefs({
+                  letterSpacing: Math.max(
+                    0,
+                    Math.round((prefs.letterSpacing - 0.01) * 100) / 100,
+                  ),
+                })
+              }
+              onInc={() =>
+                updatePrefs({
+                  letterSpacing: Math.min(
+                    0.12,
+                    Math.round((prefs.letterSpacing + 0.01) * 100) / 100,
+                  ),
+                })
+              }
+              onChange={(v) => updatePrefs({ letterSpacing: v / 100 })}
+            />
+
+            <SliderRow
+              label={`版心宽度 ${prefs.maxWidth}ch 级`}
+              value={prefs.maxWidth}
+              min={32}
+              max={52}
+              step={2}
+              onDec={() =>
+                updatePrefs({
+                  maxWidth: Math.max(32, prefs.maxWidth - 2),
+                })
+              }
+              onInc={() =>
+                updatePrefs({
+                  maxWidth: Math.min(52, prefs.maxWidth + 2),
+                })
+              }
+              onChange={(v) => updatePrefs({ maxWidth: v })}
+            />
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setPrefs(DEFAULT_READER_PREFS);
+                  saveReaderPrefs(DEFAULT_READER_PREFS);
+                }}
+              >
+                恢复默认
+              </Button>
+              <Button className="flex-1" onClick={() => setSettingsOpen(false)}>
+                <X className="h-4 w-4" />
+                完成
+              </Button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>
+    </div>
+  );
+}
+
+function SliderRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onDec,
+  onInc,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  display?: string;
+  onDec: () => void;
+  onInc: () => void;
+  onChange: (v: number) => void;
+}) {
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <div>
+      <p className="mb-2 text-xs text-fg-muted">{label}</p>
+      <div className="flex items-center gap-3">
+        <Button variant="secondary" size="icon-sm" onClick={onDec}>
+          <Minus className="h-4 w-4" />
+        </Button>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-bg-subtle accent-[var(--color-accent)]"
+          style={{
+            background: `linear-gradient(to right, var(--color-accent) ${pct}%, var(--color-bg-subtle) ${pct}%)`,
+          }}
+        />
+        <Button variant="secondary" size="icon-sm" onClick={onInc}>
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 }

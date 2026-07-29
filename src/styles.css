@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Default tokens = dark (墨夜) */
 @theme {
   --color-bg: #0b0b0c;
   --color-bg-elevated: #121214;
@@ -15,7 +16,7 @@
   --color-accent-fg: #0b0b0c;
   --color-primary: #e8e4dc;
   --color-primary-fg: #121214;
-  --color-paper: #f4efe6;
+  --color-paper: #f7f2e8;
   --color-paper-fg: #1c1915;
   --color-paper-muted: #6b645a;
   --color-paper-line: #e5ddd0;
@@ -41,6 +42,33 @@
   --shadow-card: 0 1px 0 rgb(255 255 255 / 0.04), 0 12px 40px rgb(0 0 0 / 0.35);
 }
 
+/* 浅色 · 纸白 —— 整站 chrome */
+html[data-theme="light"] {
+  --color-bg: #f6f3ed;
+  --color-bg-elevated: #fffcf7;
+  --color-bg-subtle: #ece7de;
+  --color-bg-hover: #e3ddd2;
+  --color-fg: #1a1814;
+  --color-fg-muted: #5c574f;
+  --color-fg-subtle: #8a847a;
+  --color-border: #ddd6c8;
+  --color-border-strong: #c4bbaa;
+  --color-accent: #5c5346;
+  --color-accent-fg: #fffcf7;
+  --color-primary: #2a241c;
+  --color-primary-fg: #f7f2e8;
+  --color-paper: #f7f2e8;
+  --color-paper-fg: #1c1915;
+  --color-paper-muted: #6b645a;
+  --color-paper-line: #e5ddd0;
+  --color-success: #3d7a52;
+  --color-warning: #9a6b2f;
+  --color-danger: #a85a4a;
+  --color-ring: #5c5346;
+  --shadow-soft: 0 8px 28px rgb(42 36 28 / 0.1);
+  --shadow-card: 0 1px 0 rgb(255 255 255 / 0.8), 0 10px 32px rgb(42 36 28 / 0.08);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
@@ -49,6 +77,10 @@
   html {
     color-scheme: dark;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  html[data-theme="light"] {
+    color-scheme: light;
   }
 
   body {
@@ -61,6 +93,7 @@
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   button:not(:disabled),
@@ -85,20 +118,31 @@
   }
 
   .reader-prose {
-    font-family: var(--font-serif);
+    font-family: var(--reader-font-family, var(--font-serif));
     font-size: var(--reader-font-size, 1.125rem);
-    line-height: var(--reader-line-height, 1.85);
-    color: var(--color-paper-fg);
-    letter-spacing: 0.01em;
+    line-height: var(--reader-line-height, 1.9);
+    letter-spacing: var(--reader-letter-spacing, 0.02em);
+    color: inherit;
+    max-width: var(--reader-max-width, 40rem);
   }
 
   .reader-prose p {
-    margin: 0 0 1.25em;
+    margin: 0 0 1.15em;
     text-indent: 2em;
+    text-align: justify;
+    text-justify: inter-ideograph;
+    hyphens: auto;
   }
 
-  .reader-prose p:first-child {
+  .reader-prose p:first-of-type {
     text-indent: 0;
+  }
+
+  /* 英文段落更宽松首行缩进 */
+  .reader-prose[data-font="sans"] p,
+  .reader-prose[data-font="mono"] p {
+    text-indent: 0;
+    margin-bottom: 1em;
   }
 
   .safe-pb {

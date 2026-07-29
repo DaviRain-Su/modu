@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { Book, Chapter } from "@/lib/books/types";
+import {
+  readerFontFamily,
+  readerThemeClass,
+  type ReaderFont,
+  type ReaderTheme,
+} from "@/lib/reader/prefs";
 import { cn } from "@/lib/utils";
 
 export function TextReader({
@@ -7,6 +13,9 @@ export function TextReader({
   chapter,
   fontSize,
   lineHeight,
+  letterSpacing,
+  maxWidth,
+  font,
   theme,
   onProgress,
   onSelectText,
@@ -15,7 +24,10 @@ export function TextReader({
   chapter: Chapter;
   fontSize: number;
   lineHeight: number;
-  theme: "paper" | "sepia" | "night";
+  letterSpacing: number;
+  maxWidth: number;
+  font: ReaderFont;
+  theme: ReaderTheme;
   onProgress: (pct: number) => void;
   onSelectText: (text: string) => void;
 }) {
@@ -23,7 +35,9 @@ export function TextReader({
   const chapters = book.chapters ?? [];
   const chapterIndex = chapters.findIndex((c) => c.id === chapter.id);
   const globalBase =
-    chapters.length > 0 ? (Math.max(0, chapterIndex) / chapters.length) * 100 : 0;
+    chapters.length > 0
+      ? (Math.max(0, chapterIndex) / chapters.length) * 100
+      : 0;
   const chapterShare = chapters.length > 0 ? 100 / chapters.length : 100;
 
   const paragraphs = useMemo(
@@ -63,30 +77,35 @@ export function TextReader({
     };
   }, [onSelectText]);
 
-  const themeClass =
-    theme === "night"
-      ? "bg-[#121212] text-[#e8e4dc]"
-      : theme === "sepia"
-        ? "bg-[#efe6d4] text-[#3a3226]"
-        : "bg-paper text-paper-fg";
-
   return (
     <div
       ref={scrollerRef}
-      className={cn("h-full overflow-y-auto", themeClass)}
+      className={cn(
+        "h-full overflow-y-auto transition-colors duration-200",
+        readerThemeClass(theme),
+      )}
       style={
         {
           "--reader-font-size": `${fontSize}px`,
           "--reader-line-height": String(lineHeight),
+          "--reader-letter-spacing": `${letterSpacing}em`,
+          "--reader-max-width": `${maxWidth}rem`,
+          "--reader-font-family": readerFontFamily(font),
         } as React.CSSProperties
       }
     >
-      <article className="reader-prose mx-auto max-w-[42rem] px-5 pb-16 pt-8 sm:px-8 sm:pt-10">
+      <article
+        className="reader-prose mx-auto px-5 pb-24 pt-8 sm:px-8 sm:pt-10"
+        data-font={font}
+      >
         <header className="mb-8 border-b border-current/10 pb-5">
           <p className="text-xs tracking-[0.16em] text-current/45">
             {book.title}
           </p>
-          <h1 className="mt-2 font-serif text-2xl font-medium leading-snug tracking-tight sm:text-3xl">
+          <h1
+            className="mt-2 text-2xl font-medium leading-snug tracking-tight sm:text-3xl"
+            style={{ fontFamily: readerFontFamily(font) }}
+          >
             {chapter.title}
           </h1>
           <p className="mt-2 text-sm text-current/50">{book.author}</p>

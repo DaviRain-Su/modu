@@ -8,8 +8,12 @@ import {
 import { Toaster } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthProvider } from "@/lib/auth/provider";
+import { AppThemeProvider, useAppTheme } from "@/lib/theme/app-theme";
 import { useLibraryStore } from "@/lib/store/library";
 import appCss from "../styles.css?url";
+
+// Prevent theme flash before React hydrates
+const themeBootScript = `(function(){try{var t=localStorage.getItem('modu_app_theme');if(t!=='light'&&t!=='dark')t='dark';document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}catch(e){document.documentElement.dataset.theme='dark';}})();`;
 
 export const Route = createRootRoute({
   head: () => ({
@@ -25,7 +29,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "墨读 — 支持 PDF / EPUB 的在线阅读器，书城精选、本地上传、AI 伴读与公开批注，手机与电脑皆宜。",
+          "墨读 — 支持 PDF / EPUB 的在线阅读器，公版书城、私有上传、AI 伴读，手机与电脑皆宜。",
       },
       { name: "theme-color", content: "#0b0b0c" },
     ],
@@ -33,6 +37,19 @@ export const Route = createRootRoute({
   }),
   component: RootComponent,
 });
+
+function ThemedToaster() {
+  const { theme } = useAppTheme();
+  return (
+    <Toaster
+      theme={theme === "light" ? "light" : "dark"}
+      position="top-center"
+      toastOptions={{
+        className: "border border-border bg-bg-elevated text-fg",
+      }}
+    />
+  );
+}
 
 function RootComponent() {
   const init = useLibraryStore((s) => s.init);
@@ -45,20 +62,17 @@ function RootComponent() {
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
       </head>
       <body>
-        <AuthProvider>
-          <AppShell>
-            <Outlet />
-          </AppShell>
-          <Toaster
-            theme="dark"
-            position="top-center"
-            toastOptions={{
-              className: "border border-border bg-bg-elevated text-fg",
-            }}
-          />
-        </AuthProvider>
+        <AppThemeProvider>
+          <AuthProvider>
+            <AppShell>
+              <Outlet />
+            </AppShell>
+            <ThemedToaster />
+          </AuthProvider>
+        </AppThemeProvider>
         <Scripts />
       </body>
     </html>

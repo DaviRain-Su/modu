@@ -1,18 +1,38 @@
 import { useEffect, useRef, useState } from "react";
 import { getBookFile } from "@/lib/storage/r2";
+import { readerFontFamily, type ReaderFont, type ReaderTheme } from "@/lib/reader/prefs";
 import { cn } from "@/lib/utils";
+
+function epubColors(theme: ReaderTheme) {
+  switch (theme) {
+    case "night":
+      return { bg: "#141414", fg: "#e4dfd4" };
+    case "sepia":
+      return { bg: "#efe6d4", fg: "#3a3226" };
+    case "sage":
+      return { bg: "#e8efe6", fg: "#1e2a1c" };
+    case "cream":
+      return { bg: "#faf6ef", fg: "#2a241c" };
+    default:
+      return { bg: "#f7f2e8", fg: "#1c1915" };
+  }
+}
 
 export function EpubReader({
   storageKey,
   theme,
   fontSize,
+  font = "serif",
+  lineHeight = 1.85,
   onProgress,
   onSelectText,
   onToc,
 }: {
   storageKey: string;
-  theme: "paper" | "sepia" | "night";
+  theme: ReaderTheme;
   fontSize: number;
+  font?: ReaderFont;
+  lineHeight?: number;
   onProgress: (pct: number) => void;
   onSelectText: (text: string) => void;
   onToc?: (items: { id: string; label: string; href: string }[]) => void;
@@ -87,16 +107,14 @@ export function EpubReader({
         });
         renditionRef.current = rendition;
 
-        const bg =
-          theme === "night" ? "#121212" : theme === "sepia" ? "#efe6d4" : "#f4efe6";
-        const fg =
-          theme === "night" ? "#e8e4dc" : theme === "sepia" ? "#3a3226" : "#1c1915";
+        const { bg, fg } = epubColors(theme);
         rendition.themes.default({
           body: {
             color: `${fg} !important`,
             background: `${bg} !important`,
             "font-size": `${fontSize}px !important`,
-            "line-height": "1.75 !important",
+            "line-height": `${lineHeight} !important`,
+            "font-family": `${readerFontFamily(font)} !important`,
             padding: "16px !important",
           },
         });
@@ -163,10 +181,7 @@ export function EpubReader({
   useEffect(() => {
     const r = renditionRef.current;
     if (!r) return;
-    const bg =
-      theme === "night" ? "#121212" : theme === "sepia" ? "#efe6d4" : "#f4efe6";
-    const fg =
-      theme === "night" ? "#e8e4dc" : theme === "sepia" ? "#3a3226" : "#1c1915";
+    const { bg, fg } = epubColors(theme);
     try {
       r.themes.override("color", fg);
       r.themes.override("background", bg);
@@ -194,12 +209,7 @@ export function EpubReader({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const shell =
-    theme === "night"
-      ? "bg-[#121212]"
-      : theme === "sepia"
-        ? "bg-[#efe6d4]"
-        : "bg-paper";
+  const shell = theme === "night" ? "bg-[#141414]" : theme === "sage" ? "bg-[#e8efe6]" : theme === "sepia" ? "bg-[#efe6d4]" : theme === "cream" ? "bg-[#faf6ef]" : "bg-[#f7f2e8]";
 
   return (
     <div className={cn("relative flex h-full flex-col", shell)}>

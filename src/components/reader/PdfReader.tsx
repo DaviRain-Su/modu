@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getBookBlobUrl } from "@/lib/storage/r2";
+import { readerThemeClass, type ReaderTheme } from "@/lib/reader/prefs";
 import { cn } from "@/lib/utils";
 
 export function PdfReader({
@@ -12,7 +13,7 @@ export function PdfReader({
   onPageText,
 }: {
   storageKey: string;
-  theme: "paper" | "sepia" | "night";
+  theme: ReaderTheme;
   initialPage?: number;
   onProgress: (pct: number) => void;
   onPageChange: (page: number) => void;
@@ -192,12 +193,7 @@ export function PdfReader({
     return () => window.removeEventListener("keydown", onKey);
   }, [total]);
 
-  const bg =
-    theme === "night"
-      ? "bg-[#0e0e0e]"
-      : theme === "sepia"
-        ? "bg-[#efe6d4]"
-        : "bg-paper";
+  const bg = readerThemeClass(theme);
 
   if (loading) {
     return (

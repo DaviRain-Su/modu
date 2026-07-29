@@ -5,11 +5,14 @@ import {
   Flame,
   Home,
   Library,
+  Moon,
+  Sun,
   Upload,
   UserRound,
 } from "lucide-react";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { signOut } from "@/lib/auth/client";
+import { useAppTheme } from "@/lib/theme/app-theme";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -34,6 +37,25 @@ const nav = [
   },
 ] as const;
 
+function ThemeToggle() {
+  const { theme, toggle } = useAppTheme();
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
+      aria-label={theme === "dark" ? "切换浅色主题" : "切换深色主题"}
+      title={theme === "dark" ? "浅色" : "深色"}
+    >
+      {theme === "dark" ? (
+        <Sun className="h-4 w-4" strokeWidth={1.75} />
+      ) : (
+        <Moon className="h-4 w-4" strokeWidth={1.75} />
+      )}
+    </button>
+  );
+}
+
 function AuthSlot() {
   const { user, isPending } = useCurrentUserState();
   if (isPending) {
@@ -52,7 +74,7 @@ function AuthSlot() {
     );
   }
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1 sm:gap-2">
       <Link
         to="/account"
         className="flex max-w-[9rem] items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-sm hover:bg-bg-subtle"
@@ -90,7 +112,7 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-dvh bg-bg text-fg">
+    <div className="min-h-dvh bg-bg text-fg transition-colors duration-200">
       <header className="sticky top-0 z-40 border-b border-border/80 bg-bg/90 backdrop-blur-md safe-pt">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
           <Link to="/" className="flex items-center gap-2.5">
@@ -147,7 +169,10 @@ export function AppShell({
             </Link>
           </nav>
 
-          <AuthSlot />
+          <div className="flex items-center gap-1.5">
+            <ThemeToggle />
+            <AuthSlot />
+          </div>
         </div>
       </header>
 
@@ -183,7 +208,10 @@ export function AppShell({
                 : "text-fg-subtle",
             )}
           >
-            <UserRound className="h-5 w-5" strokeWidth={pathname.startsWith("/account") ? 2.1 : 1.7} />
+            <UserRound
+              className="h-5 w-5"
+              strokeWidth={pathname.startsWith("/account") ? 2.1 : 1.7}
+            />
             我的
           </Link>
         </div>
