@@ -105,7 +105,8 @@ const LOCAL_DEV_ORIGINS: string[] = [
 // Vercel injects hostnames without scheme (e.g. my-app.vercel.app). Without
 // trusting them, deployed email/password hits "Invalid origin" and OAuth
 // redirect_uri is wrong when BETTER_AUTH_URL is missing.
-function vercelHosts(): string[] {
+// Also trust the Grok Apps host (`*.grok.me`, e.g. https://modu.grok.me).
+function deployHosts(): string[] {
   const hosts = new Set<string>();
   const push = (raw?: string) => {
     if (!raw) return;
@@ -118,13 +119,17 @@ function vercelHosts(): string[] {
   push(env("VERCEL_URL"));
   push(env("VERCEL_PROJECT_PRODUCTION_URL"));
   push(env("VERCEL_BRANCH_URL"));
-  // Common platform wildcard (preview deployments)
+  // Host-only form of BETTER_AUTH_URL (when set) so baseURL allowlist matches.
+  push(explicitBaseURL);
+  // Common platform wildcards
   hosts.add("*.vercel.app");
+  hosts.add("*.grok.me");
+  hosts.add("modu.grok.me");
   return [...hosts];
 }
 
-const deployHosts = vercelHosts();
-const deployOrigins = deployHosts.flatMap((host) => {
+const deployHostList = deployHosts();
+const deployOrigins = deployHostList.flatMap((host) => {
   if (host.startsWith("*.")) {
     return [`https://${host}`, `http://${host}`];
   }
@@ -133,10 +138,10 @@ const deployOrigins = deployHosts.flatMap((host) => {
 
 const baseURL = explicitBaseURL ?? {
   // Include loopback hosts so dynamic baseURL resolves for local email/password
-  // (not only the preview wildcard). Also trust Vercel hosts when present.
+  // (not only the preview wildcard). Also trust Vercel / Grok Apps hosts.
   allowedHosts: [
     ...previewAllowedHosts,
-    ...deployHosts,
+    ...deployHostList,
     "localhost",
     "127.0.0.1",
     "[::1]",
@@ -149,20 +154,19 @@ const baseURL = explicitBaseURL ?? {
 
 // Origins Better Auth accepts on credentialed POSTs (sign-up/sign-in, etc.).
 // Missing entries here surface as FORBIDDEN "Invalid origin".
-const trustedOrigins: string[] = explicitBaseURL
-  ? [explicitBaseURL, ...deployOrigins, ...LOCAL_DEV_ORIGINS]
-  : [
-      // Host wildcards (matched against Origin's host)
-      ...previewAllowedHosts,
-      ...deployHosts,
-      // Full-origin wildcards (matched against Origin)
-      ...previewAllowedHosts.flatMap((host) => [
-        `https://${host}`,
-        `http://${host}`,
-      ]),
-      ...deployOrigins,
-      ...LOCAL_DEV_ORIGINS,
-    ];
+// Always include Grok Apps + Vercel hosts even when BETTER_AUTH_URL is set, so a
+// slight URL mismatch (www / trailing slash) does not hard-break login.
+const trustedOrigins: string[] = [
+  ...(explicitBaseURL ? [explicitBaseURL] : []),
+  ...previewAllowedHosts,
+  ...deployHostList,
+  ...previewAllowedHosts.flatMap((host) => [
+    `https://${host}`,
+    `http://${host}`,
+  ]),
+  ...deployOrigins,
+  ...LOCAL_DEV_ORIGINS,
+];
 
 const databaseUrl = env("DATABASE_URL");
 

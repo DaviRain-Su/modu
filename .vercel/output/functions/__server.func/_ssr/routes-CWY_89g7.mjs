@@ -2,7 +2,7 @@ import { g as Link } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as require_jsx_runtime } from "../_libs/radix-ui__react-context+react.mjs";
 import { t as Button } from "./button-DffftdNv.mjs";
 import { t as Badge } from "./badge-DAVRaZYe.mjs";
-import { E as Flame, M as BookOpen, O as Cloud, P as ArrowRight, c as Smartphone, i as Upload, n as Users, s as Sparkles } from "../_libs/lucide-react.mjs";
+import { D as Flame, F as ArrowRight, N as BookOpen, c as Sparkles, i as Upload, k as Cloud, l as Smartphone, n as Users } from "../_libs/lucide-react.mjs";
 import { n as MARKET_BOOKS } from "./catalog-BpzRlWR9.mjs";
 import { n as describeStorage } from "./r2-kRm6suj4.mjs";
 import { t as BookCard } from "./BookCard-BeYXM9-U.mjs";

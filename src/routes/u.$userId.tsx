@@ -35,8 +35,8 @@ function ProfilePage() {
     let cancelled = false;
     (async () => {
       const [p, a] = await Promise.all([
-        getPublicProfile({ data: userId }),
-        listPublicAnnotationsByUser({ data: userId }),
+        getPublicProfile({ data: { userId } }),
+        listPublicAnnotationsByUser({ data: { userId } }),
       ]);
       if (cancelled) return;
       setProfile(p);

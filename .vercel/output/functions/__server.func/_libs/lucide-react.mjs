@@ -618,6 +618,26 @@ var Trash2 = createLucideIcon("trash-2", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var TriangleAlert = createLucideIcon("triangle-alert", [
+	["path", {
+		d: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
+		key: "wmoenq"
+	}],
+	["path", {
+		d: "M12 9v4",
+		key: "juzpu7"
+	}],
+	["path", {
+		d: "M12 17h.01",
+		key: "p32p05"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Upload = createLucideIcon("upload", [
 	["path", {
 		d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4",
@@ -690,4 +710,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { ChevronLeft as A, House as C, FileUp as D, Flame as E, BookOpen as M, BookMarked as N, Cloud as O, ArrowRight as P, Languages as S, Highlighter as T, LoaderCircle as _, Trash2 as a, Lightbulb as b, Smartphone as c, Search as d, Plus as f, MessageSquareQuote as g, MessageSquareText as h, Upload as i, Check as j, Clock as k, Settings2 as l, Minus as m, Users as n, Star as o, PanelRight as p, UserRound as r, Sparkles as s, X as t, Send as u, List as v, History as w, Library as x, ListTree as y };
+export { Clock as A, Languages as C, Flame as D, Highlighter as E, ArrowRight as F, Check as M, BookOpen as N, FileUp as O, BookMarked as P, Library as S, History as T, MessageSquareQuote as _, TriangleAlert as a, ListTree as b, Sparkles as c, Send as d, Search as f, MessageSquareText as g, Minus as h, Upload as i, ChevronLeft as j, Cloud as k, Smartphone as l, PanelRight as m, Users as n, Trash2 as o, Plus as p, UserRound as r, Star as s, X as t, Settings2 as u, LoaderCircle as v, House as w, Lightbulb as x, List as y };

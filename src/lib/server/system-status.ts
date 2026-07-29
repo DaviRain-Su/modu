@@ -6,6 +6,7 @@ import {
   cfWorkerHealth,
   cloudflareWorkerConfigured,
 } from "@/lib/cloudflare/worker-client";
+import { cloudflareAuthBackendConfigured } from "@/lib/cloudflare/auth-proxy";
 
 /**
  * Public deployment diagnostics — no secrets.
@@ -24,23 +25,29 @@ export const getSystemStatus = createServerFn({ method: "GET" }).handler(
       (has("CLOUDFLARE_API_KEY") || has("CF_API_TOKEN"));
     const grokAuthCustom =
       has("GROK_AUTH_CLIENT_ID") && has("GROK_AUTH_CLIENT_SECRET");
-    const workerConfigured = cloudflareWorkerConfigured();
+    const cfAuth = cloudflareAuthBackendConfigured();
+    const workerConfigured = cloudflareWorkerConfigured() || cfAuth;
     let workerReachable = false;
     let workerDetail: string | null = null;
-    if (workerConfigured) {
+    if (workerConfigured || cfAuth) {
       const h = await cfWorkerHealth();
       workerReachable = h.ok;
       workerDetail = h.detail;
     }
 
-    const persistentDb = dbSource === "neon";
+    const persistentDb = cfAuth || dbSource === "neon";
 
     return {
       ok: true as const,
-      database: dbSource,
+      database: cfAuth ? "cloudflare-d1" : dbSource,
       persistentDatabase: persistentDb,
+      authBackend: cfAuth
+        ? "cloudflare-worker"
+        : dbSource === "neon"
+          ? "neon"
+          : "pglite",
       emailPasswordEnabled: emailAndPasswordEnabled as boolean,
-      federatedAuthConfigured: authConfigured,
+      federatedAuthConfigured: authConfigured || cfAuth,
       loginMethods: [
         { id: "google", label: "Google" },
         { id: "x", label: "X" },
@@ -52,26 +59,27 @@ export const getSystemStatus = createServerFn({ method: "GET" }).handler(
       r2Configured: r2Public || workerConfigured,
       cloudflareAiConfigured: cloudflareAiRest || workerReachable,
       cloudflareWorker: {
-        configured: workerConfigured,
+        configured: Boolean(process.env.MODU_CF_API_URL?.trim()),
         reachable: workerReachable,
+        authOnD1: cfAuth,
         detail: workerDetail,
       },
       aiGatewayConfigured: has("AI_GATEWAY_ID"),
       loginReady: persistentDb || process.env.NODE_ENV !== "production",
       notes: [
-        !persistentDb
-          ? "数据库仍是内存 PGLite：正式登录请配置 DATABASE_URL（Neon）。"
-          : "已连接持久数据库。",
-        !grokAuthCustom
-          ? "Google / X：预览客户端仅沙箱可靠；正式域需 GROK_AUTH_CLIENT_ID/SECRET。"
-          : "已配置正式 Google / X OAuth 客户端。",
-        workerConfigured
+        cfAuth
           ? workerReachable
-            ? "Cloudflare Worker 已连通（R2 / Workers AI）。"
-            : "已配置 MODU_CF_API_URL，但 Worker 暂不可达（检查 wrangler dev / 部署）。"
-          : "未配置独立 CF Worker：设置 MODU_CF_API_URL + MODU_CF_API_SECRET。",
+            ? "登录已接到 Cloudflare Worker + D1（账号会持久保存）。"
+            : "已配置 MODU_CF_API_URL，但 Worker 不可达 — 请确认 wrangler deploy 与密钥。"
+          : "未配置 Cloudflare 后端：设置 MODU_CF_API_URL 后登录将写入 D1。",
+        !persistentDb
+          ? "当前无持久库：正式站请部署 Cloudflare Worker（推荐）或 DATABASE_URL。"
+          : "持久存储已就绪。",
+        !grokAuthCustom
+          ? "Google / X：正式域需 GROK_AUTH_CLIENT_ID/SECRET（可写入 Worker secret）。"
+          : "已配置 Google / X OAuth。",
         !cloudflareAiRest && !workerReachable
-          ? "官方 AI 将使用本地伴读降级，直到 Worker 或 CF 密钥就绪。"
+          ? "官方 AI 将本地降级，直到 Worker 或 CF 密钥就绪。"
           : "官方 AI 通道可用。",
       ],
     };

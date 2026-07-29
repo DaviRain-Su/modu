@@ -1,5 +1,5 @@
 /**
- * 主应用 → 独立 Cloudflare Worker 的服务端客户端。
+ * 主应用 → Cloudflare Worker 服务端客户端。
  * 配置 MODU_CF_API_URL + MODU_CF_API_SECRET 后启用。
  */
 
@@ -36,10 +36,10 @@ export async function cfWorkerHealth(): Promise<{
   if (!base) return { ok: false, detail: null };
   try {
     const res = await fetch(`${base}/health`, {
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(5000),
     });
     const text = await res.text();
-    return { ok: res.ok, detail: text.slice(0, 500) };
+    return { ok: res.ok, detail: text.slice(0, 800) };
   } catch (e) {
     return { ok: false, detail: String(e) };
   }
@@ -101,4 +101,24 @@ export async function cfWorkerPutObject(input: {
     throw new Error(`CF R2 put ${res.status}`);
   }
   return (await res.json()) as { key: string; size: number };
+}
+
+export async function cfWorkerEnsureProfile(input: {
+  userId: string;
+  displayName?: string;
+}): Promise<void> {
+  const base = baseUrl();
+  if (!base || !secret()) return;
+  try {
+    await fetch(`${base}/v1/profile/ensure`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-modu-secret": secret(),
+      },
+      body: JSON.stringify(input),
+    });
+  } catch (e) {
+    console.warn("[cf] ensure profile failed", e);
+  }
 }

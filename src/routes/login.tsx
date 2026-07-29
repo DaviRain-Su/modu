@@ -10,7 +10,10 @@ import {
   GROK_PROVIDERS,
   authClient,
   authEnabled,
+  getBearerToken,
   signIn,
+  signInWithEmail,
+  signUpWithEmail,
 } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { ensureMyProfile } from "@/lib/server/profile";
@@ -72,10 +75,21 @@ function LoginPage() {
   }, []);
 
   async function afterAuth() {
+    // Ensure session is warm before profile / navigation.
+    try {
+      await authClient.getSession();
+    } catch {
+      /* ignore */
+    }
     try {
       await ensureMyProfile();
     } catch {
-      /* profile created lazily */
+      /* profile created lazily — not a login blocker */
+    }
+    // Full navigation so the session store remounts cleanly with bearer/cookie.
+    if (typeof window !== "undefined") {
+      window.location.assign("/account");
+      return;
     }
     void navigate({ to: "/account" });
   }
@@ -88,12 +102,10 @@ function LoginPage() {
         callbackURL: "/account",
         errorCallbackURL: "/login?error=oauth",
       });
-      try {
-        await authClient.getSession();
-      } catch {
-        /* ignore */
+      // Deployed: redirects away. Preview popup: session + bearer ready.
+      if (getBearerToken()) {
+        await afterAuth();
       }
-      await afterAuth();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "登录失败";
       if (/pop-up|popup|blocked/i.test(msg)) {
@@ -114,20 +126,27 @@ function LoginPage() {
     setBusy(true);
     try {
       if (mode === "signup") {
-        const res = await authClient.signUp.email({
+        await signUpWithEmail({
           email: email.trim(),
           password,
           name: name.trim() || email.split("@")[0] || "读者",
         });
-        if (res.error) throw new Error(res.error.message || "注册失败");
         toast.success("注册成功");
       } else {
-        const res = await authClient.signIn.email({
+        await signInWithEmail({
           email: email.trim(),
           password,
         });
-        if (res.error) throw new Error(res.error.message || "登录失败");
         toast.success("登录成功");
+      }
+      if (!getBearerToken()) {
+        // Cookie-only path (HTTPS deploy) — still OK if getSession sees cookie.
+        const sess = await authClient.getSession();
+        if (!sess.data?.user) {
+          throw new Error(
+            "登录响应成功，但会话未能保存。请改用 HTTPS 正式域名，或刷新后重试。",
+          );
+        }
       }
       await afterAuth();
     } catch (err) {
@@ -138,13 +157,18 @@ function LoginPage() {
         );
       } else if (/failed to fetch|network/i.test(msg)) {
         toast.error("无法连接登录服务，请检查网络后重试");
+      } else if (/user already exists|already exists/i.test(msg)) {
+        toast.error("该邮箱已注册，请直接登录");
+        setMode("signin");
+      } else if (/invalid.*password|invalid.*email|credentials/i.test(msg)) {
+        toast.error("邮箱或密码不正确。若刚换了环境，需重新注册（数据未持久化）。");
       } else if (
         status &&
         !status.persistentDatabase &&
         /invalid|credential|password|user/i.test(msg)
       ) {
         toast.error(
-          `${msg}（提示：未接持久数据库时，正式环境账号可能无法保存）`,
+          `${msg}（当前无持久数据库：重启/重新发布后旧账号会消失，请重新注册）`,
         );
       } else {
         toast.error(msg);
@@ -185,6 +209,11 @@ function LoginPage() {
               <li key={n}>· {n}</li>
             ))}
           </ul>
+          {!status.persistentDatabase ? (
+            <p className="mt-2 text-fg">
+              当前账号只存在内存里：服务重启或重新发布后，请用同一邮箱重新注册。
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -312,8 +341,7 @@ function LoginPage() {
               </p>
 
               <p className="text-center text-[11px] leading-relaxed text-fg-subtle">
-                支持 Google、X 与邮箱密码登录。Google / X
-                经安全中介完成授权；邮箱保存在本站数据库。
+                支持 Google、X 与邮箱。若提示密码错误，多半是环境重启后旧账号已清空——点注册即可。
               </p>
             </>
           ) : (

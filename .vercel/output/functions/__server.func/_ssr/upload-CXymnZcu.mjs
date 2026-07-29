@@ -8,7 +8,7 @@ import { t as Input } from "./input-C-9hCiFR.mjs";
 import { t as Badge } from "./badge-DAVRaZYe.mjs";
 import { i as CardTitle, n as CardContent, r as CardHeader, t as Card } from "./card-D3goAFTK.mjs";
 import { n as toast } from "../_libs/sonner.mjs";
-import { D as FileUp, O as Cloud, _ as LoaderCircle } from "../_libs/lucide-react.mjs";
+import { O as FileUp, k as Cloud, v as LoaderCircle } from "../_libs/lucide-react.mjs";
 import { n as describeStorage } from "./r2-kRm6suj4.mjs";
 import { t as useLibraryStore } from "./library---StLbl3.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/upload-CXymnZcu.js

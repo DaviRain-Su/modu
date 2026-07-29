@@ -118,7 +118,7 @@ var HEADERS = { TSS_SHELL: "X-TSS_SHELL" };
 * the dev styles URL for route-scoped CSS collection.
 */
 async function getStartManifest(matchedRoutes) {
-	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-DrqUYUot.mjs");
+	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-BHI9ijBX.mjs");
 	const startManifest = tsrStartManifest();
 	let routes = startManifest.routes;
 	routes[rootRouteId];
@@ -140,79 +140,83 @@ async function getStartManifest(matchedRoutes) {
 var manifest = {
 	"0e7a8b2c9bea19bdb107f5b2b2da3c2ee12deed900d6705770e11c06c6ac9d7a": {
 		functionName: "getPublicProfile_createServerFn_handler",
-		importer: () => import("./profile-JR75IWK7.mjs")
+		importer: () => import("./profile-BNzdix3g.mjs")
 	},
 	"160bd8627a55a9527982cd4b5f5451f9945927bd5eeb9aa59db899232fd99045": {
 		functionName: "runUserAi_createServerFn_handler",
-		importer: () => import("./ai-chat-Z03vYqGv.mjs")
+		importer: () => import("./ai-chat-DGaVYOeq.mjs")
 	},
 	"2516a54386004386c896f1a0ac5bdf163cb6fe80f8ce05136f7c7b30edbcc98d": {
 		functionName: "updateMyProfile_createServerFn_handler",
-		importer: () => import("./profile-JR75IWK7.mjs")
+		importer: () => import("./profile-BNzdix3g.mjs")
+	},
+	"2533deed9e21caa410ef0d87a71bb8f8c2c9ee0d218a49ce08c6625ef0b8bb18": {
+		functionName: "getSystemStatus_createServerFn_handler",
+		importer: () => import("./system-status-mjuXvwwe.mjs")
 	},
 	"27b10c1d8c7e00d5686f848f268be1a26b613a93d30f3574b14090b94325a71c": {
 		functionName: "listBookAnnotations_createServerFn_handler",
-		importer: () => import("./social-Dd3LNTsT.mjs")
+		importer: () => import("./social-DT3Ldey_.mjs")
 	},
 	"43089abf67b0d2fc04dd8ee11c57f4f4a6f26a675e0ebab772a5634a77d97f36": {
 		functionName: "getMyProfile_createServerFn_handler",
-		importer: () => import("./profile-JR75IWK7.mjs")
+		importer: () => import("./profile-BNzdix3g.mjs")
 	},
 	"585cc5b942e2224ddaa8724ac475bb370fce65febae60730b76a3bf55b068d7b": {
 		functionName: "getHotBooks_createServerFn_handler",
-		importer: () => import("./social-Dd3LNTsT.mjs")
+		importer: () => import("./social-DT3Ldey_.mjs")
 	},
 	"6fefea7c5a61163a3c2d6eb46986f0dc76c7cefb74fd62a2eff55ec3493054cd": {
 		functionName: "listMyConversations_createServerFn_handler",
-		importer: () => import("./ai-conversations-sXTeuntJ.mjs")
+		importer: () => import("./ai-conversations-Daiqn95P.mjs")
 	},
 	"85b36a8ae330be55ee95794310da400d61502ab34f6b4021345db19b8fbeffbb": {
 		functionName: "listPublicAnnotationsByUser_createServerFn_handler",
-		importer: () => import("./profile-JR75IWK7.mjs")
+		importer: () => import("./profile-BNzdix3g.mjs")
 	},
 	"89d9d67ad3f11396b0fc4a61cda83e3a154a5fa5185a090dd994cd581cad6587": {
 		functionName: "getRecentPublicNotes_createServerFn_handler",
-		importer: () => import("./social-Dd3LNTsT.mjs")
+		importer: () => import("./social-DT3Ldey_.mjs")
 	},
 	"a03b035bb944ffa09e19e2bd821bf548884761046c5973998fedc13e45924e0a": {
 		functionName: "saveMyAiSettings_createServerFn_handler",
-		importer: () => import("./ai-settings-BnXm7FZB.mjs")
+		importer: () => import("./ai-settings-Q1Asb1lv.mjs")
 	},
 	"b1e72ad542101f5c789eb6af686d9cae40dbfbcd7e8099043e24e1a56dd62980": {
 		functionName: "ensureMyProfile_createServerFn_handler",
-		importer: () => import("./profile-JR75IWK7.mjs")
+		importer: () => import("./profile-BNzdix3g.mjs")
 	},
 	"b9146f1e5a21785371bed7f8711dab0c9c1ac66dcb28aaae11e93ee3ea999b47": {
 		functionName: "getMyConversation_createServerFn_handler",
-		importer: () => import("./ai-conversations-sXTeuntJ.mjs")
+		importer: () => import("./ai-conversations-Daiqn95P.mjs")
 	},
 	"bb1f1147934a0dd82d418e1c2eb7cfbc1517d8c2db5555fa59596d47f7e7b887": {
 		functionName: "recordBookRead_createServerFn_handler",
-		importer: () => import("./social-Dd3LNTsT.mjs")
+		importer: () => import("./social-DT3Ldey_.mjs")
 	},
 	"bd6d4ac2829137909f63c0378644abcf6f45320608ee557ca1f322402f849f07": {
 		functionName: "deleteMyConversation_createServerFn_handler",
-		importer: () => import("./ai-conversations-sXTeuntJ.mjs")
+		importer: () => import("./ai-conversations-Daiqn95P.mjs")
 	},
 	"ce541efa2c439727e0f9e86d79be680c3416c1cd55a54e4d124f22cf8bbadd88": {
 		functionName: "deleteMyAnnotation_createServerFn_handler",
-		importer: () => import("./social-Dd3LNTsT.mjs")
+		importer: () => import("./social-DT3Ldey_.mjs")
 	},
 	"dfbbb9a9d9e00abe693a2c8c143984ccc686129d9dbe6e352997bd4112da9fc2": {
 		functionName: "getMySubscription_createServerFn_handler",
-		importer: () => import("./ai-settings-BnXm7FZB.mjs")
+		importer: () => import("./ai-settings-Q1Asb1lv.mjs")
 	},
 	"e4bb12dac935bcd6c93922c0c097f0b736501b5a7ab12868e0639d08d23ff1a7": {
 		functionName: "activateSubscription_createServerFn_handler",
-		importer: () => import("./ai-settings-BnXm7FZB.mjs")
+		importer: () => import("./ai-settings-Q1Asb1lv.mjs")
 	},
 	"f5041d0d880fa3e5b9247ff303599589c781305ce5ef6c50d03faae34f0e0663": {
 		functionName: "createAnnotation_createServerFn_handler",
-		importer: () => import("./social-Dd3LNTsT.mjs")
+		importer: () => import("./social-DT3Ldey_.mjs")
 	},
 	"f6179490395e318110ce80cea2418663ed3b5de898fe9ce8498d292547a6c801": {
 		functionName: "getMyAiSettings_createServerFn_handler",
-		importer: () => import("./ai-settings-BnXm7FZB.mjs")
+		importer: () => import("./ai-settings-Q1Asb1lv.mjs")
 	}
 };
 async function getServerFnById(id, access) {
@@ -1482,7 +1486,7 @@ var getBaseManifest = getProdBaseManifest;
 var createEarlyHintsForRequest = createEarlyHintsCollector;
 async function loadEntries() {
 	const [routerEntry, startEntry, pluginAdapters] = await Promise.all([
-		import("./router-uiPBMbdR.mjs"),
+		import("./router-Btngtp8T.mjs"),
 		import("./start-5Z2QO8AU.mjs"),
 		import("./empty-plugin-adapters-D9UWiqvJ.mjs")
 	]);

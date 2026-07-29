@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSessionUser } from "@/lib/auth/verify.server";
+import { cfWorkerEnsureProfile } from "@/lib/cloudflare/worker-client";
 
 export type PublicProfile = {
   userId: string;
@@ -34,6 +35,10 @@ async function ensureProfileRow(
     values (${userId}, 'official')
     on conflict (user_id) do nothing
   `;
+  await cfWorkerEnsureProfile({
+    userId,
+    displayName: fallback,
+  });
 }
 
 export const ensureMyProfile = createServerFn({ method: "POST" })
@@ -82,19 +87,24 @@ export const updateMyProfile = createServerFn({ method: "POST" })
   }))
   .handler(async ({ context, data }) => {
     const sql = await getSql();
+    await ensureProfileRow(sql, context.userId);
     await sql`
       update user_profiles
-      set display_name = ${data.displayName || "读者"},
+      set display_name = ${data.displayName},
           bio = ${data.bio},
           updated_at = now()
       where user_id = ${context.userId}
     `;
+    await cfWorkerEnsureProfile({
+      userId: context.userId,
+      displayName: data.displayName,
+    });
     return { ok: true as const };
   });
 
 export const getPublicProfile = createServerFn({ method: "GET" })
-  .validator((userId: string) => userId.trim())
-  .handler(async ({ data: userId }) => {
+  .validator((input: { userId: string }) => input)
+  .handler(async ({ data }) => {
     const sql = await getSql();
     const rows = await sql<{
       user_id: string;
@@ -106,15 +116,16 @@ export const getPublicProfile = createServerFn({ method: "GET" })
       select p.user_id, p.display_name, p.bio, p.avatar_url, coalesce(s.plan, 'free') as plan
       from user_profiles p
       left join user_subscriptions s on s.user_id = p.user_id
-      where p.user_id = ${userId}
+      where p.user_id = ${data.userId}
     `;
     const r = rows[0];
     if (!r) return null;
     const ann = await sql<{ c: number }>`
-      select count(*)::int as c from annotations where user_id = ${userId} and is_public = true
+      select count(*)::int as c from annotations
+      where user_id = ${data.userId} and is_public = true
     `;
     const reads = await sql<{ c: number }>`
-      select count(*)::int as c from book_reads where user_id = ${userId}
+      select count(*)::int as c from book_reads where user_id = ${data.userId}
     `;
     return {
       userId: r.user_id,
@@ -128,8 +139,8 @@ export const getPublicProfile = createServerFn({ method: "GET" })
   });
 
 export const listPublicAnnotationsByUser = createServerFn({ method: "GET" })
-  .validator((userId: string) => userId.trim())
-  .handler(async ({ data: userId }) => {
+  .validator((input: { userId: string }) => input)
+  .handler(async ({ data }) => {
     const sql = await getSql();
     return sql<{
       id: string;
@@ -139,9 +150,9 @@ export const listPublicAnnotationsByUser = createServerFn({ method: "GET" })
       kind: string;
       created_at: string;
     }>`
-      select id, book_id, quote, note, kind, created_at::text
+      select id, book_id, quote, note, coalesce(kind, 'note') as kind, created_at::text
       from annotations
-      where user_id = ${userId} and is_public = true
+      where user_id = ${data.userId} and is_public = true
       order by created_at desc
       limit 50
     `;

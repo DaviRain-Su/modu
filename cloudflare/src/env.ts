@@ -1,49 +1,26 @@
-/**
- * Worker 运行时 Env —— 与 wrangler.toml 绑定一一对应。
- * 主应用通过 MODU_CF_API_URL + MODU_API_SECRET 调用。
- *
- * 若本机未装 @cloudflare/workers-types，用最小桩类型通过检查。
- */
-
-export interface R2ObjectBody {
-  body: ReadableStream | null;
-  httpEtag: string;
-  httpMetadata?: { contentType?: string };
-}
-
-export interface R2BucketLike {
-  get(key: string): Promise<R2ObjectBody | null>;
-  put(
-    key: string,
-    value: ArrayBuffer | ArrayBufferView | string | ReadableStream,
-    options?: { httpMetadata?: { contentType?: string } },
-  ): Promise<unknown>;
-  delete(key: string): Promise<void>;
-  list(opts?: { prefix?: string; limit?: number }): Promise<{
-    objects: { key: string; size: number; uploaded?: Date }[];
-    truncated: boolean;
-  }>;
-}
-
-export interface AiLike {
-  run(model: string, input: unknown): Promise<unknown>;
-}
-
 export interface Env {
-  BOOKS: R2BucketLike;
-  AI: AiLike;
-  DB?: unknown;
+  BOOKS: R2Bucket;
+  AI: Ai;
+  DB: D1Database;
   ALLOWED_ORIGINS: string;
+  APP_ORIGIN: string;
   MODU_API_SECRET: string;
+  BETTER_AUTH_SECRET: string;
   AI_MODEL?: string;
   AI_GATEWAY_ID?: string;
+  GROK_AUTH_ISSUER?: string;
+  GROK_AUTH_CLIENT_ID?: string;
+  GROK_AUTH_CLIENT_SECRET?: string;
 }
 
 export function parseAllowedOrigins(env: Env): string[] {
-  return (env.ALLOWED_ORIGINS || "")
+  const list = (env.ALLOWED_ORIGINS || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  const app = (env.APP_ORIGIN || "").trim();
+  if (app && !list.includes(app)) list.push(app);
+  return list;
 }
 
 export function corsHeaders(env: Env, request: Request): Record<string, string> {
@@ -58,7 +35,9 @@ export function corsHeaders(env: Env, request: Request): Record<string, string> 
     "access-control-allow-origin": ok ? origin || "*" : allowed[0] || "*",
     "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
     "access-control-allow-headers":
-      "content-type,authorization,x-modu-secret",
+      "content-type,authorization,x-modu-secret,cookie",
+    "access-control-allow-credentials": "true",
+    "access-control-expose-headers": "set-auth-token,set-cookie",
     "access-control-max-age": "86400",
     vary: "Origin",
   };
@@ -72,4 +51,8 @@ export function assertSecret(env: Env, request: Request): boolean {
     request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
     "";
   return got === expected;
+}
+
+export function appOrigin(env: Env): string {
+  return (env.APP_ORIGIN || "https://modu.grok.me").replace(/\/$/, "");
 }

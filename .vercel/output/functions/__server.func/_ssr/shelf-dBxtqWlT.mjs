@@ -1,7 +1,7 @@
 import { g as Link } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as require_jsx_runtime } from "../_libs/radix-ui__react-context+react.mjs";
 import { t as Button } from "./button-DffftdNv.mjs";
-import { N as BookMarked, i as Upload } from "../_libs/lucide-react.mjs";
+import { P as BookMarked, i as Upload } from "../_libs/lucide-react.mjs";
 import { t as useLibraryStore } from "./library---StLbl3.mjs";
 import { t as BookCard } from "./BookCard-BeYXM9-U.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/shelf-dBxtqWlT.js

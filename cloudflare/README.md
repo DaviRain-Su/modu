@@ -1,70 +1,83 @@
-# 墨读 Cloudflare 后端（本地可部署）
+# 墨读 · Cloudflare 后端
 
-独立 Worker：R2 对象存储 + Workers AI。登录（Google / X / 邮箱）仍由**主应用** Better Auth 处理；本 Worker 不负责 OAuth。
+这是**正式后端**：登录（D1）、图书文件（R2）、AI（Workers AI）。  
+前端站点（如 `https://modu.grok.me`）通过环境变量接到这里。
 
-## 一分钟本地起服务
+## 架构
+
+```
+浏览器 → modu.grok.me（前端 / Vercel）
+              │
+              ├─ /api/auth/*  ──反代──►  Cloudflare Worker  Better Auth + D1
+              ├─ AI / 上传档案 ──────►  Worker  R2 + Workers AI
+              └─ 页面 SSR 仍在前端
+```
+
+## 一次性初始化
 
 ```bash
 cd cloudflare
-# 首次：登录 Cloudflare（可选，纯本地模拟可跳过）
-# npx wrangler login
+npm install
 
-# 密钥（本地文件 cloudflare/.dev.vars，勿提交 git）
-echo 'MODU_API_SECRET=dev-secret-change-me' > .dev.vars
+# 登录 Cloudflare
+npx wrangler login
 
-npx wrangler dev --port 8787
-# → http://127.0.0.1:8787/health
-```
+# 创建 D1 + R2
+npx wrangler d1 create modu
+# 把返回的 database_id 填进 wrangler.toml 的 database_id
 
-## 主应用如何接
-
-在主应用运行环境注入（平台面板 / 本机 export，**不要**提交 `.env`）：
-
-| 变量 | 示例 |
-|---|---|
-| `MODU_CF_API_URL` | `http://127.0.0.1:8787` |
-| `MODU_CF_API_SECRET` | 与 Worker `MODU_API_SECRET` 相同 |
-| `VITE_CF_API_URL` | 同上（可选，前端健康检查） |
-| `VITE_R2_PUBLIC_URL` | 若配置了 R2 自定义域 |
-
-登录相关（主应用，不是 Worker）：
-
-| 变量 | 说明 |
-|---|---|
-| `DATABASE_URL` | Neon 连接串 |
-| `BETTER_AUTH_URL` | 前端公开 URL |
-| `BETTER_AUTH_SECRET` | 会话密钥 |
-| `GROK_AUTH_CLIENT_ID` / `SECRET` | Google & X（Grok 中介） |
-
-## API
-
-| 方法 | 路径 | 鉴权 | 说明 |
-|---|---|---|---|
-| GET | `/health` | 否 | 存活 |
-| POST | `/ai/chat` | `x-modu-secret` | Workers AI |
-| PUT | `/storage/:key` | 密钥 | 上传 R2 |
-| GET | `/storage/:key` | 否* | 下载 |
-| DELETE | `/storage/:key` | 密钥 | 删除 |
-| GET | `/storage?prefix=` | 否* | 列举 |
-
-\* 生产建议给读操作也加鉴权或仅暴露公开前缀。
-
-### AI 示例
-
-```bash
-curl -s http://127.0.0.1:8787/ai/chat \
-  -H 'content-type: application/json' \
-  -H 'x-modu-secret: dev-secret-change-me' \
-  -d '{"messages":[{"role":"user","content":"用一句话解释道德经第一章"}]}'
-```
-
-## 正式发布
-
-```bash
 npx wrangler r2 bucket create modu-books
-npx wrangler secret put MODU_API_SECRET
-# 改 wrangler.toml 的 ALLOWED_ORIGINS 为你的前端域名
+
+# 建表
+npm run db:init:remote
+
+# 密钥
+npx wrangler secret put MODU_API_SECRET      # 随机长串
+npx wrangler secret put BETTER_AUTH_SECRET   # 随机长串
+# 若平台已注入 Google/X，可再 put GROK_AUTH_CLIENT_ID / SECRET
+
+# 改 wrangler.toml:
+#   APP_ORIGIN = "https://modu.grok.me"
+#   ALLOWED_ORIGINS 含该域名
+
 npx wrangler deploy
+# → 得到 https://modu-api.<你的子域>.workers.dev
 ```
 
-把部署得到的 `https://modu-api.<subdomain>.workers.dev` 填进主应用的 `MODU_CF_API_URL`。
+## 主应用环境变量（Grok 发布面板 / 平台注入）
+
+| 变量 | 值 |
+|---|---|
+| `MODU_CF_API_URL` | `https://modu-api.<subdomain>.workers.dev` |
+| `MODU_CF_API_SECRET` | 与 Worker 的 `MODU_API_SECRET` 相同 |
+| `BETTER_AUTH_URL` | `https://modu.grok.me` |
+| `VITE_CF_API_URL` | 同上 Worker URL（可选） |
+
+设好后：**登录走 Cloudflare D1，账号会持久保存**（不再依赖 Neon / 内存 PGLite）。
+
+## 本地联调
+
+```bash
+# 终端 1 — Worker
+cd cloudflare
+echo 'MODU_API_SECRET=dev-secret
+BETTER_AUTH_SECRET=dev-auth-secret' > .dev.vars
+npm run db:init    # 本地 D1
+npm run dev        # :8787
+
+# 终端 2 — 主应用
+export MODU_CF_API_URL=http://127.0.0.1:8787
+export MODU_CF_API_SECRET=dev-secret
+export BETTER_AUTH_URL=http://127.0.0.1:8080
+npm run dev
+```
+
+## API 一览
+
+| 路径 | 说明 |
+|---|---|
+| `GET /health` | D1 / R2 / AI 状态 |
+| `* /api/auth/*` | 登录（邮箱 / Google / X） |
+| `POST /ai/chat` | Workers AI（需 `x-modu-secret`） |
+| `PUT/GET /storage/...` | R2 |
+| `POST /v1/profile/ensure` | 初始化用户档案行 |

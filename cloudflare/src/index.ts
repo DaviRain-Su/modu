@@ -1,19 +1,19 @@
 /**
- * 墨读 Cloudflare Worker
- * - GET  /health
- * - POST /ai/chat          Workers AI 伴读
- * - PUT  /storage/:key     上传对象到 R2
- * - GET  /storage/:key     读取对象
- * - DELETE /storage/:key
- * - GET  /storage?prefix=  列举
+ * 墨读 Cloudflare Worker — 正式后端
  *
- * 写操作需 Header: x-modu-secret: <MODU_API_SECRET>
+ * - /api/auth/*     Better Auth + D1（登录持久化）
+ * - /health
+ * - /ai/chat        Workers AI
+ * - /storage/*      R2
+ * - /v1/*           业务 API（档案 / 批注等，需密钥或会话）
  */
 
+import { createAuth } from "./auth";
 import {
   type Env,
   assertSecret,
   corsHeaders,
+  appOrigin,
 } from "./env";
 
 export default {
@@ -27,14 +27,36 @@ export default {
     const path = url.pathname.replace(/\/+$/, "") || "/";
 
     try {
+      // ── Auth (Better Auth on D1) ──────────────────────────────────
+      if (path === "/api/auth" || path.startsWith("/api/auth/")) {
+        if (!env.DB) {
+          return json({ error: "D1 binding missing" }, cors, 503);
+        }
+        const auth = createAuth(env);
+        const res = await auth.handler(request);
+        return withCors(res, cors);
+      }
+
       if (path === "/health" || path === "/") {
+        let d1ok = false;
+        try {
+          if (env.DB) {
+            await env.DB.prepare("select 1 as x").first();
+            d1ok = true;
+          }
+        } catch {
+          d1ok = false;
+        }
         return json(
           {
             ok: true,
             service: "modu-cloudflare",
+            appOrigin: appOrigin(env),
+            d1: d1ok,
             r2: Boolean(env.BOOKS),
             ai: Boolean(env.AI),
             model: env.AI_MODEL || "@cf/qwen/qwen3-30b-a3b-fp8",
+            auth: true,
             time: new Date().toISOString(),
           },
           cors,
@@ -55,22 +77,72 @@ export default {
         return await handleStorage(request, env, cors, path, url);
       }
 
-      return json({ error: "not found" }, cors, 404);
+      // 业务：确保用户档案行存在
+      if (path === "/v1/profile/ensure" && request.method === "POST") {
+        if (!assertSecret(env, request)) {
+          return json({ error: "unauthorized" }, cors, 401);
+        }
+        return await ensureProfile(request, env, cors);
+      }
+
+      return json({ error: "not found", path }, cors, 404);
     } catch (e) {
       const message = e instanceof Error ? e.message : "internal error";
+      console.error("[modu-api]", message, e);
       return json({ error: message }, cors, 500);
     }
   },
 };
 
+function withCors(res: Response, cors: Record<string, string>): Response {
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(cors)) {
+    if (!headers.has(k)) headers.set(k, v);
+  }
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
+}
+
+async function ensureProfile(
+  request: Request,
+  env: Env,
+  cors: Record<string, string>,
+): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as {
+    userId?: string;
+    displayName?: string;
+  };
+  if (!body.userId) return json({ error: "userId required" }, cors, 400);
+  await env.DB.prepare(
+    `insert into user_profiles (user_id, display_name) values (?, ?)
+     on conflict(user_id) do nothing`,
+  )
+    .bind(body.userId, body.displayName || null)
+    .run();
+  await env.DB.prepare(
+    `insert into user_subscriptions (user_id, plan, status) values (?, 'free', 'active')
+     on conflict(user_id) do nothing`,
+  )
+    .bind(body.userId)
+    .run();
+  await env.DB.prepare(
+    `insert into user_ai_settings (user_id, provider) values (?, 'official')
+     on conflict(user_id) do nothing`,
+  )
+    .bind(body.userId)
+    .run();
+  return json({ ok: true }, cors);
+}
+
 async function handleAiChat(
   request: Request,
   env: Env,
-  cors: HeadersInit,
+  cors: Record<string, string>,
 ): Promise<Response> {
-  if (!env.AI) {
-    return json({ error: "AI binding missing" }, cors, 503);
-  }
+  if (!env.AI) return json({ error: "AI binding missing" }, cors, 503);
   const body = (await request.json().catch(() => ({}))) as {
     messages?: { role: string; content: string }[];
     system?: string;
@@ -78,9 +150,7 @@ async function handleAiChat(
     max_tokens?: number;
   };
   const messages = body.messages ?? [];
-  if (!messages.length) {
-    return json({ error: "messages required" }, cors, 400);
-  }
+  if (!messages.length) return json({ error: "messages required" }, cors, 400);
   const model = body.model || env.AI_MODEL || "@cf/qwen/qwen3-30b-a3b-fp8";
   const payload = {
     messages: body.system
@@ -88,7 +158,6 @@ async function handleAiChat(
       : messages,
     max_tokens: body.max_tokens ?? 900,
   };
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result: unknown = await (env.AI as any).run(model, payload);
   const text = extractWorkersAiText(result);
@@ -115,13 +184,11 @@ function extractWorkersAiText(result: unknown): string {
 async function handleStorage(
   request: Request,
   env: Env,
-  cors: HeadersInit,
+  cors: Record<string, string>,
   path: string,
   url: URL,
 ): Promise<Response> {
-  if (!env.BOOKS) {
-    return json({ error: "R2 binding missing" }, cors, 503);
-  }
+  if (!env.BOOKS) return json({ error: "R2 binding missing" }, cors, 503);
 
   if (path === "/storage" && request.method === "GET") {
     const prefix = url.searchParams.get("prefix") || "";
@@ -147,7 +214,7 @@ async function handleStorage(
   if (request.method === "GET") {
     const obj = await env.BOOKS.get(key);
     if (!obj) return json({ error: "not found" }, cors, 404);
-    const headers = new Headers(cors as HeadersInit);
+    const headers = new Headers(cors);
     headers.set(
       "content-type",
       obj.httpMetadata?.contentType || "application/octet-stream",
@@ -176,13 +243,13 @@ async function handleStorage(
 
 function json(
   data: unknown,
-  cors: HeadersInit,
+  cors: Record<string, string>,
   status = 200,
 ): Response {
   return new Response(JSON.stringify(data, null, 2), {
     status,
     headers: {
-      ...(cors as Record<string, string>),
+      ...cors,
       "content-type": "application/json; charset=utf-8",
     },
   });

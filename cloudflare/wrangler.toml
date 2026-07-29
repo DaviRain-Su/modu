@@ -1,32 +1,41 @@
-# 墨读 · Cloudflare Worker（本地：npx wrangler dev）
-# 文档见 cloudflare/README.md
+# 墨读 · Cloudflare 后端（D1 登录持久化 + R2 + Workers AI）
+# 本地: npm run cf:dev
+# 发布: npm run cf:deploy
 
 name = "modu-api"
 main = "src/index.ts"
 compatibility_date = "2026-04-01"
 compatibility_flags = ["nodejs_compat"]
 
-# ── 绑定：在 Cloudflare 控制台创建同名资源，或本地用下方模拟 ──
-
 [[r2_buckets]]
 binding = "BOOKS"
 bucket_name = "modu-books"
 preview_bucket_name = "modu-books-preview"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "modu"
+# 首次: npx wrangler d1 create modu  → 把返回的 database_id 填到下一行
+database_id = "00000000-0000-0000-0000-000000000001"
+preview_database_id = "00000000-0000-0000-0000-000000000001"
+
 [ai]
 binding = "AI"
 
-# 可选 D1（会话/业务若迁到 CF 再用）
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "modu"
-# database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-
 [vars]
-# 逗号分隔；本地预览与正式前端 origin
-ALLOWED_ORIGINS = "http://localhost:8080,http://127.0.0.1:8080"
+# 前端正式域名（登录 cookie / OAuth redirect 用）
+APP_ORIGIN = "https://modu.grok.me"
+ALLOWED_ORIGINS = "https://modu.grok.me,http://localhost:8080,http://127.0.0.1:8080"
 AI_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8"
+# 可选: GROK_AUTH_ISSUER = "https://auth.grok.me"
 
-# 密钥请用：npx wrangler secret put MODU_API_SECRET
-# 本地可在 cloudflare/.dev.vars 写入（勿提交）：
-#   MODU_API_SECRET=dev-secret-change-me
+# 密钥（勿提交）:
+#   npx wrangler secret put MODU_API_SECRET
+#   npx wrangler secret put BETTER_AUTH_SECRET
+#   npx wrangler secret put GROK_AUTH_CLIENT_ID
+#   npx wrangler secret put GROK_AUTH_CLIENT_SECRET
+# 本地 cloudflare/.dev.vars:
+#   MODU_API_SECRET=dev-secret
+#   BETTER_AUTH_SECRET=dev-auth-secret-change-me
+#   GROK_AUTH_CLIENT_ID=
+#   GROK_AUTH_CLIENT_SECRET=

@@ -4,7 +4,7 @@ import { n as require_react } from "../_libs/@radix-ui/react-compose-refs+[...].
 import { n as require_jsx_runtime } from "../_libs/radix-ui__react-context+react.mjs";
 import { t as Input } from "./input-C-9hCiFR.mjs";
 import { t as Badge } from "./badge-DAVRaZYe.mjs";
-import { d as Search } from "../_libs/lucide-react.mjs";
+import { f as Search } from "../_libs/lucide-react.mjs";
 import { n as MARKET_BOOKS, t as CATEGORIES } from "./catalog-BpzRlWR9.mjs";
 import { n as BookRow, t as BookCard } from "./BookCard-BeYXM9-U.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/library-Bch4nqIf.js

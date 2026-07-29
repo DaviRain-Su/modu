@@ -11,6 +11,11 @@ import { GROK_PROVIDERS } from "./providers";
  * bearer token instead (captured from the popup, see `signIn`). The `onRequest`
  * hook attaches that token when present; when deployed (cookie auth) no token
  * is stored, so nothing changes.
+ *
+ * Email/password: cookies use `__Host-` + Secure. Browsers often refuse them on
+ * non-HTTPS origins (and live-preview iframes partition cookies). The bearer
+ * plugin returns `set-auth-token` — we always capture that so login works even
+ * when Set-Cookie is dropped.
  */
 export const authClient = createAuthClient({
   plugins: [genericOAuthClient()],
@@ -19,6 +24,24 @@ export const authClient = createAuthClient({
       const token = getBearerToken();
       if (token) ctx.headers.set("Authorization", `Bearer ${token}`);
       return ctx;
+    },
+    onSuccess(ctx) {
+      // Prefer the full signed session token from the bearer plugin header.
+      const fromHeader = ctx.response.headers.get("set-auth-token");
+      if (fromHeader) {
+        setBearerToken(fromHeader);
+        return;
+      }
+      // Fallback: JSON body `{ token }` on sign-in / sign-up (unsigned id is
+      // accepted by some Better Auth builds; header is preferred).
+      try {
+        const data = ctx.data as { token?: string } | undefined;
+        if (data?.token && typeof data.token === "string") {
+          setBearerToken(data.token);
+        }
+      } catch {
+        /* ignore */
+      }
     },
   },
 });
@@ -38,6 +61,8 @@ export { GROK_PROVIDERS };
 // bearer token in sessionStorage and attach it to every Better Auth request (and
 // to server functions, via `@/lib/auth/middleware`). Empty everywhere except the
 // preview after a popup sign-in, so the cookie path is untouched elsewhere.
+//
+// Also used as a fallback when Secure cookies cannot be stored (http preview).
 const BEARER_KEY = "grok-auth.bearer-token";
 
 /** The stored preview bearer token, or null. */
@@ -58,6 +83,52 @@ function setBearerToken(token: string | null): void {
   } catch {
     /* storage unavailable — ignore */
   }
+}
+
+/**
+ * Persist a session token from email sign-in/up (or any path that returns one).
+ * Safe to call with null (no-op clear is via signOut).
+ */
+export function captureSessionToken(token: string | null | undefined): void {
+  if (token && token.trim()) setBearerToken(token.trim());
+}
+
+/**
+ * Email / password sign-in. Always captures bearer so login works when cookies
+ * are blocked (iframe preview, Secure cookies on http).
+ */
+export async function signInWithEmail(input: {
+  email: string;
+  password: string;
+}): Promise<void> {
+  const { data, error } = await authClient.signIn.email({
+    email: input.email,
+    password: input.password,
+  });
+  if (error) throw new Error(error.message ?? "登录失败");
+  const token =
+    (data as { token?: string } | null)?.token ?? getBearerToken();
+  if (token) setBearerToken(token);
+  // Refresh session store with bearer attached.
+  await authClient.getSession();
+}
+
+/** Email / password sign-up + auto session (same bearer capture). */
+export async function signUpWithEmail(input: {
+  email: string;
+  password: string;
+  name: string;
+}): Promise<void> {
+  const { data, error } = await authClient.signUp.email({
+    email: input.email,
+    password: input.password,
+    name: input.name,
+  });
+  if (error) throw new Error(error.message ?? "注册失败");
+  const token =
+    (data as { token?: string } | null)?.token ?? getBearerToken();
+  if (token) setBearerToken(token);
+  await authClient.getSession();
 }
 
 /**

@@ -2,7 +2,7 @@ import { r as formatCount, t as cn } from "./utils-D0dWsYTS.mjs";
 import { g as Link } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as require_jsx_runtime } from "../_libs/radix-ui__react-context+react.mjs";
 import { t as Badge } from "./badge-DAVRaZYe.mjs";
-import { o as Star } from "../_libs/lucide-react.mjs";
+import { s as Star } from "../_libs/lucide-react.mjs";
 import { t as BookCover } from "./BookCover-BK7lziiY.mjs";
 import { t as Progress } from "./progress-DP36Q2v3.mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/BookCard-BeYXM9-U.js
