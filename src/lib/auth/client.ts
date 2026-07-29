@@ -217,6 +217,11 @@ async function requestOAuthUrl(
         "社交登录后端尚未更新完成。请先用邮箱登录，或在本机执行：cd cloudflare && npx wrangler deploy",
       );
     }
+    if (/invalid redirect/i.test(raw)) {
+      throw new Error(
+        "OAuth 回调域名未登记。正式站请用平台注入的 Google/X 登录（勿把未配 GROK_AUTH 的 Worker 当作登录后端）。",
+      );
+    }
     if (/invalid origin|forbidden/i.test(raw)) {
       throw new Error(
         "登录域名未受信任。请确认站点地址为 https://modu.grok.me。",
