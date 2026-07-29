@@ -172,10 +172,8 @@ function LoginPage() {
       } else if (/user already exists|already exists/i.test(msg)) {
         toast.error("该邮箱已注册，请直接登录");
         setMode("signin");
-      } else if (/invalid.*password|invalid.*email|credentials/i.test(msg)) {
-        toast.error(
-          "邮箱或密码不正确。若环境刚发布过，旧账号可能已清空——请重新注册。",
-        );
+      } else if (/invalid.*password|invalid.*email|credentials|清空|重新注册/i.test(msg)) {
+        toast.error(msg.includes("重新注册") ? msg : "邮箱或密码不正确。若刚发布过站点，请重新注册。");
       } else {
         toast.error(msg);
       }
@@ -205,15 +203,24 @@ function LoginPage() {
       </div>
 
       {showDeployWarning ? (
-        <div className="mb-4 rounded-[var(--radius-lg)] border border-border bg-bg-subtle/80 px-3 py-3 text-xs leading-relaxed text-fg-muted">
+        <div className="mb-4 rounded-[var(--radius-lg)] border border-accent/30 bg-accent/5 px-3 py-3 text-xs leading-relaxed text-fg-muted">
           <div className="mb-1.5 flex items-center gap-1.5 font-medium text-fg">
             <AlertTriangle className="h-3.5 w-3.5 text-accent" />
-            提示
+            关于登录（当前环境）
           </div>
-          <ul className="space-y-1">
-            <li>· 点 Google / X 会跳转到授权页，请在新页面完成登录。</li>
-            <li>· 若按钮无跳转，请关闭广告拦截，或允许弹窗后重试。</li>
-            <li>· 也可用下方邮箱直接注册（当前环境已支持）。</li>
+          <ul className="space-y-1.5">
+            <li>
+              ·{" "}
+              <strong className="text-fg">邮箱可直接注册/登录</strong>
+              。若提示密码错误，多半是站点重新发布后预览库被清空——请重新注册同一个邮箱即可。
+            </li>
+            <li>
+              · Google / X 需要正式 OAuth 配置；未配置时请先用邮箱。点按钮会跳转授权页。
+            </li>
+            <li>
+              · 要让账号<strong className="text-fg">永久保存</strong>
+              ，请按 README 接 Cloudflare D1（MODU_CF_API_URL）或 DATABASE_URL。
+            </li>
           </ul>
         </div>
       ) : null}

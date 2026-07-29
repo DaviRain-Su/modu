@@ -129,12 +129,38 @@ function deployHosts(): string[] {
 }
 
 const deployHostList = deployHosts();
-const deployOrigins = deployHostList.flatMap((host) => {
-  if (host.startsWith("*.")) {
-    return [`https://${host}`, `http://${host}`];
+
+/** Origin strings only (scheme + host). Bare hostnames break Better Auth checks. */
+function toOrigins(hosts: string[]): string[] {
+  const out = new Set<string>();
+  for (const host of hosts) {
+    if (!host) continue;
+    if (host.startsWith("http://") || host.startsWith("https://")) {
+      out.add(host.replace(/\/$/, ""));
+      continue;
+    }
+    if (host.startsWith("*.")) {
+      out.add(`https://${host}`);
+      out.add(`http://${host}`);
+      continue;
+    }
+    // host only
+    out.add(`https://${host}`);
+    // local-ish
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "[::1]" ||
+      host.endsWith(".localhost")
+    ) {
+      out.add(`http://${host}`);
+      out.add(`http://${host}:8080`);
+    }
   }
-  return [`https://${host}`];
-});
+  return [...out];
+}
+
+const deployOrigins = toOrigins(deployHostList);
 
 const baseURL = explicitBaseURL ?? {
   // Include loopback hosts so dynamic baseURL resolves for local email/password
@@ -157,15 +183,12 @@ const baseURL = explicitBaseURL ?? {
 // Always include Grok Apps + Vercel hosts even when BETTER_AUTH_URL is set, so a
 // slight URL mismatch (www / trailing slash) does not hard-break login.
 const trustedOrigins: string[] = [
-  ...(explicitBaseURL ? [explicitBaseURL] : []),
-  ...previewAllowedHosts,
-  ...deployHostList,
-  ...previewAllowedHosts.flatMap((host) => [
-    `https://${host}`,
-    `http://${host}`,
-  ]),
+  ...(explicitBaseURL ? [explicitBaseURL.replace(/\/$/, "")] : []),
+  ...toOrigins(previewAllowedHosts),
   ...deployOrigins,
   ...LOCAL_DEV_ORIGINS,
+  // 保险：正式域名
+  "https://modu.grok.me",
 ];
 
 const databaseUrl = env("DATABASE_URL");
@@ -207,94 +230,58 @@ const grokOAuthPlugin = authConfigured
         // `prompt: "login"` forces the broker to re-authenticate against the
         // upstream on every sign-in instead of silently reusing an existing
         // broker session. Combined with the broker sending Google
-        // `prompt=select_account`, the user always gets the account chooser
-        // and can pick (or switch) which account to sign in with.
-        authorizationUrlParams: { idp, prompt: "login" },
+        // `prompt=select_account`, this makes "Sign in with Google" always show
+        // an account picker — without it, a second click (or a different
+        // provider after Google) completes in the background with no UI.
+        // `access_type: "offline"` is required for Google refresh tokens.
+        // `idp` is the app-builder extension the broker uses to pick Google/X/…
+        authorizationUrlParams: {
+          access_type: "offline",
+          prompt: "login",
+          idp,
+        },
       })),
     })
   : null;
 
 export const auth = betterAuth({
-  baseURL,
-  // Deployed apps inject BETTER_AUTH_SECRET. Preview: process-stable secret on
-  // globalThis so HMR doesn't invalidate PGLite-backed sessions (see above).
+  appName: "墨读",
   secret: env("BETTER_AUTH_SECRET") ?? previewAuthSecret(),
-  database,
-
-  // CSRF / origin check for credentialed auth POSTs (email sign-up/sign-in, …).
-  // See `trustedOrigins` construction above — must cover live preview hosts AND
-  // local loopback variants, or clients get "Invalid origin".
+  baseURL,
   trustedOrigins,
-
-  // Encrypt broker-issued OAuth tokens at rest, and treat the broker's upstreams
-  // as trusted first-party identities. The broker owns identity and X emails are
-  // synthetic/unverified, so WITHOUT this a login can fail with
-  // `account_not_linked` (Better Auth refuses to attach an untrusted, unverified
-  // identity to an existing user). Google and X carry DISTINCT emails, so this
-  // never merges them into one user — they stay separate identities.
-  account: {
-    encryptOAuthTokens: true,
-    accountLinking: {
+  database,
+  emailAndPassword: {
+    enabled: emailAndPasswordEnabled,
+    minPasswordLength: 8,
+  },
+  session: {
+    // 7 days — matches product expectation for a reading app
+    expiresIn: 60 * 60 * 24 * 7,
+    updateAge: 60 * 60 * 24,
+    cookieCache: {
       enabled: true,
-      trustedProviders: GROK_PROVIDERS.map((p) => p.providerId),
-      // X's synthetic email is never "verified", so don't gate linking on the
-      // local user's email-verified state.
-      requireLocalEmailVerified: false,
+      maxAge: 60 * 5,
     },
   },
-
-  // Cache the session in the short-lived signed `session_data` cookie so reads
-  // (incl. the client's `/get-session`) skip the DB — this shrinks the "loading"
-  // window and reduces auth flicker. See the `auth` skill for the full
-  // flicker-prevention guidance (gate on `isPending`; SSR the session).
-  session: { cookieCache: { enabled: true, maxAge: 300 } },
-
-  // Local email/password — toggled only via `./email-password` (not a plugin).
-  ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
-
-  // `__Host-` prefixed cookies: the browser REFUSES any same-named cookie that
-  // carries a `Domain` attribute, so a sibling `*.grok.me` app cannot "toss" a
-  // `Domain=.grok.me` session cookie onto this app. `__Host-` requires Secure +
-  // Path=/ + no Domain; Better Auth otherwise uses `__Secure-` (which permits
-  // Domain), so we drop its auto prefix (`useSecureCookies: false`) and set
-  // Secure + the names ourselves. (Browsers allow Secure cookies on
-  // `http://localhost`, so local dev still works.)
   advanced: {
-    useSecureCookies: false,
-    defaultCookieAttributes: { secure: true, sameSite: "lax", path: "/" },
-    cookies: {
-      session_token: { name: SESSION_TOKEN_COOKIE },
-      session_data: { name: "__Host-grok-auth.session_data" },
-      account_data: { name: "__Host-grok-auth.account_data" },
-      dont_remember: { name: "__Host-grok-auth.dont_remember" },
-    },
+    useSecureCookies: true,
+    // __Host- prefix requires Secure + Path=/ + no Domain
+    cookiePrefix: "grok-auth",
   },
-
   plugins: [
-    // One genericOAuth provider per upstream (when auth is on), all federating
-    // to the broker with the SAME client and differing only by the `idp` hint.
-    ...(grokOAuthPlugin ? [grokOAuthPlugin] : []),
-
-    // Accept `Authorization: Bearer <session-token>` as an alternative to the
-    // session cookie — required for the live-preview iframe, whose cookies are
-    // partitioned and never reach the parent app origin after a popup OAuth.
-    // The client stores the token (see `client.ts`) and attaches it on every
-    // `/api/auth/*` call; `getSessionUser` / `authMiddleware` also honor it.
     bearer(),
-
-    // Must be last: bridges Better Auth's cookie mutations into TanStack Start's
-    // cookie store so Set-Cookie actually lands on the response.
     tanstackStartCookies(),
+    ...(grokOAuthPlugin ? [grokOAuthPlugin] : []),
   ],
 });
 
 /**
- * Optional cookie-only session token read (for server code that needs the raw
- * token). Prefer `getSessionUser()` / `authMiddleware` for identity.
+ * Read the raw session token cookie (for popup completion page).
+ * Prefer `auth.api.getSession` for normal server-side checks.
  */
 export function readSessionTokenCookie(): string | undefined {
   try {
-    return getCookie(SESSION_TOKEN_COOKIE) || undefined;
+    return getCookie(SESSION_TOKEN_COOKIE) ?? undefined;
   } catch {
     return undefined;
   }
