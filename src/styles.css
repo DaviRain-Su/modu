@@ -454,3 +454,29 @@ html[data-theme="light"] {
     display: none;
   }
 }
+
+/* EPUB 宿主（epubjs iframe） */
+.rd-epub-shell {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+.rd-epub-host {
+  height: 100%;
+  width: 100%;
+}
+.rd-epub-host .epub-container {
+  height: 100% !important;
+  width: 100% !important;
+}
+.rd-epub-host iframe {
+  border: 0 !important;
+}
+.rd-epub-bar {
+  background: linear-gradient(
+    to top,
+    color-mix(in oklab, var(--rd-bg, #f4efe4) 92%, transparent),
+    transparent
+  );
+}

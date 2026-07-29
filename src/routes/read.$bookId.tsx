@@ -439,9 +439,13 @@ function ReaderPage() {
   const chapterIndex = chapters.findIndex((c) => c.id === chapter?.id);
   const showToc =
     chapters.length > 0 || book.format === "epub" || epubToc.length > 0;
+  // EPUB 有原文件 → 始终用 epubjs 真分页；不要把提取正文硬套 TextReader
+  const useEpub = book.format === "epub" && Boolean(book.storageKey);
+  const usePdf = book.format === "pdf" && Boolean(book.storageKey);
   const useText =
-    book.format === "text" ||
-    (book.source === "community" && Boolean(chapter?.content));
+    !useEpub &&
+    !usePdf &&
+    Boolean(chapter?.content);
   const isPrivateBook =
     book.visibility === "private" || book.source === "upload";
 
@@ -466,8 +470,8 @@ function ReaderPage() {
             <div className="min-w-0 flex-1 px-1">
               <p className="truncate text-sm font-medium">{book.title}</p>
               <p className="flex items-center gap-1 truncate text-[11px] text-fg-subtle">
-                {book.format === "epub" && book.storageKey
-                  ? "EPUB"
+                {useEpub
+                  ? "EPUB · 左右翻页"
                   : book.format === "pdf" && book.storageKey
                     ? `PDF · 第 ${page} 页`
                     : chapter?.title || book.format.toUpperCase()}
@@ -604,14 +608,15 @@ function ReaderPage() {
               }}
             />
           )}
-          {!useText && book.format === "epub" && book.storageKey && (
+          {useEpub && (
             <EpubReader
               ref={epubRef}
-              storageKey={book.storageKey}
+              storageKey={book.storageKey!}
               theme={prefs.theme}
               fontSize={prefs.fontSize}
               font={prefs.font}
               lineHeight={prefs.lineHeight}
+              layout={prefs.layout}
               initialCfi={epubCfi}
               onProgress={onProgress}
               onLocation={({ cfi, pct }) => {
@@ -623,14 +628,14 @@ function ReaderPage() {
               onToc={setEpubToc}
             />
           )}
-          {!useText && book.format === "pdf" && book.storageKey && (
+          {usePdf && (
             <div className="flex h-full min-h-0 flex-col">
               <p className="shrink-0 border-b border-border bg-bg-subtle/80 px-3 py-2 text-center text-[11px] text-fg-muted">
                 PDF 体验有限 · 推荐使用 EPUB
               </p>
               <div className="min-h-0 flex-1">
                 <PdfReader
-                  storageKey={book.storageKey}
+                  storageKey={book.storageKey!}
                   theme={prefs.theme}
                   initialPage={page}
                   onProgress={onProgress}
@@ -641,7 +646,7 @@ function ReaderPage() {
               </div>
             </div>
           )}
-          {!useText && !book.storageKey && (
+          {!useText && !useEpub && !usePdf && (
             <div className="flex h-full items-center justify-center bg-paper px-6 text-center text-sm text-paper-muted">
               文件缺失，请重新上传。
             </div>
