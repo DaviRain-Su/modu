@@ -5,7 +5,12 @@ import type { Book, Chapter, PublicDomainBasis } from "@/lib/books/types";
 import { canContributeAsPublicDomain } from "@/lib/books/copyright";
 import { uid } from "@/lib/utils";
 
-const MAX_CHAPTERS_JSON = 450_000; // ~450KB text payload
+/** 整本 chapters_json 上限（UTF-8 字节）。中文约 3 字节/字，故按字节计更准。 */
+const MAX_CHAPTERS_JSON_BYTES = 2_500_000; // ~2.5MB
+/** 单章最大「字符」数（Unicode code points，中文算 1） */
+const MAX_CHAPTER_CHARS = 120_000;
+/** 最多章节数 */
+const MAX_CHAPTERS = 400;
 
 export type CommunityBookRow = {
   id: string;
@@ -68,6 +73,102 @@ function parseChapters(json: string): Chapter[] {
   }
 }
 
+/** 按 Unicode 字符截断（中文友好） */
+function clipChars(s: string, max: number): string {
+  const chars = [...s];
+  if (chars.length <= max) return s;
+  return chars.slice(0, max).join("") + "\n\n……（本章后续已省略）";
+}
+
+/**
+ * 压缩章节列表，保证 JSON 字节数不超限。
+ * 中文每字约 3 字节，旧逻辑 450KB 很容易误伤整本古籍。
+ */
+function packChapters(raw: Chapter[]): {
+  chapters: Chapter[];
+  truncated: boolean;
+} {
+  let truncated = false;
+  const normalized = raw
+    .map((c) => {
+      const title = (c.title || "章节").slice(0, 200);
+      const full = c.content || "";
+      const content = clipChars(full, MAX_CHAPTER_CHARS);
+      if ([...full].length > MAX_CHAPTER_CHARS) truncated = true;
+      return {
+        id: c.id || uid("ch"),
+        title,
+        content,
+      };
+    })
+    .filter((c) => c.content.trim().length > 0)
+    .slice(0, MAX_CHAPTERS);
+
+  if (raw.length > MAX_CHAPTERS) truncated = true;
+
+  // 从尾部删章直到 JSON 合身
+  let chapters = normalized;
+  while (chapters.length > 1) {
+    const json = JSON.stringify(chapters);
+    if (json.length <= MAX_CHAPTERS_JSON_BYTES) break;
+    chapters = chapters.slice(0, -1);
+    truncated = true;
+  }
+
+  // 仍超：进一步缩短最后一章
+  let json = JSON.stringify(chapters);
+  if (json.length > MAX_CHAPTERS_JSON_BYTES && chapters.length > 0) {
+    truncated = true;
+    const last = chapters[chapters.length - 1]!;
+    let lo = 1000;
+    let hi = [...last.content].length;
+    let best = last.content;
+    while (lo <= hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      const trial = {
+        ...last,
+        content: clipChars(last.content, mid),
+      };
+      const packed = [...chapters.slice(0, -1), trial];
+      if (JSON.stringify(packed).length <= MAX_CHAPTERS_JSON_BYTES) {
+        best = trial.content;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    chapters = [
+      ...chapters.slice(0, -1),
+      { ...last, content: best },
+    ];
+    json = JSON.stringify(chapters);
+  }
+
+  if (json.length > MAX_CHAPTERS_JSON_BYTES) {
+    // 最后手段：只留一章极短预览
+    truncated = true;
+    const first = chapters[0]!;
+    chapters = [
+      {
+        id: first.id,
+        title: first.title,
+        content: clipChars(first.content, 8000),
+      },
+    ];
+  }
+
+  if (truncated) {
+    chapters.push({
+      id: uid("note"),
+      title: "关于本书长度",
+      content:
+        "本书原文较长（尤其是中文 UTF-8 体积更大）。社区书城已自动收录可展示的章节正文；完整 EPUB/原文件请用「仅私有阅读」上传到个人书架，体验不受此限制。",
+    });
+  }
+
+  return { chapters, truncated };
+}
+
 export const listCommunityPdBooks = createServerFn({ method: "GET" }).handler(
   async () => {
     const sql = await getSql();
@@ -120,7 +221,6 @@ export const listCommunityPdBooks = createServerFn({ method: "GET" }).handler(
         }),
       );
     } catch {
-      // table not migrated yet
       return [] as Book[];
     }
   },
@@ -156,25 +256,23 @@ export const submitCommunityPdBook = createServerFn({ method: "POST" })
     });
     if (!gate.ok) throw new Error(gate.reason);
 
-    // 社区全文上架需要可阅读的文本章节（PDF 无文本则拒绝）
-    const chapters = (data.chapters || [])
-      .map((c) => ({
-        id: c.id || uid("ch"),
-        title: (c.title || "章节").slice(0, 200),
-        content: (c.content || "").slice(0, 100_000),
-      }))
-      .filter((c) => c.content.trim().length > 0);
+    const rawChapters = (data.chapters || []).filter(
+      (c) => (c.content || "").trim().length > 0,
+    );
 
-    if (chapters.length === 0) {
+    if (rawChapters.length === 0) {
       throw new Error(
         "公版上架需要可分享的正文。请上传 TXT/Markdown，或可解析出文本的 EPUB；纯扫描 PDF 请先转文本，或仅作私有阅读。",
       );
     }
 
+    const { chapters, truncated } = packChapters(rawChapters);
     const chaptersJson = JSON.stringify(chapters);
-    if (chaptersJson.length > MAX_CHAPTERS_JSON) {
+
+    if (chaptersJson.length > MAX_CHAPTERS_JSON_BYTES) {
+      const mb = (chaptersJson.length / 1024 / 1024).toFixed(2);
       throw new Error(
-        "正文过长，暂不支持整本超大上架。可节选公版章节后贡献，或仅私有阅读。",
+        `正文仍然过大（约 ${mb}MB）。请：① 改用「仅私有阅读」上传完整 EPUB；或 ② 公版贡献时只上传节选章节的 TXT。中文按 UTF-8 体积较大，属正常现象。`,
       );
     }
 
@@ -194,9 +292,14 @@ export const submitCommunityPdBook = createServerFn({ method: "POST" })
       data.wordCount ||
       chapters.reduce((n, c) => n + [...c.content].length, 0);
 
-    // Auto-approved with trust-and-report model (see copyright policy).
-    // Status column kept so a future moderation queue can demote rows.
     const status = "approved";
+    const descBase = (data.description || "用户贡献的公版读物").trim();
+    const description = (
+      truncated
+        ? `${descBase}（正文较长，社区版已自动收录可展示章节；完整文件请私有上传）`
+        : descBase
+    ).slice(0, 2000);
+
     await sql`
       insert into community_pd_books (
         id, contributor_id, title, author, description, category, format,
@@ -207,7 +310,7 @@ export const submitCommunityPdBook = createServerFn({ method: "POST" })
         ${context.userId},
         ${data.title.trim().slice(0, 200)},
         ${data.author.trim().slice(0, 120)},
-        ${(data.description || "用户贡献的公版读物").trim().slice(0, 2000)},
+        ${description},
         ${(data.category || "文学").slice(0, 40)},
         ${data.format},
         ${data.coverColor || "#2c241c"},
@@ -225,9 +328,9 @@ export const submitCommunityPdBook = createServerFn({ method: "POST" })
 
     const book = rowToBook({
       id,
-      title: data.title.trim(),
-      author: data.author.trim(),
-      description: (data.description || "用户贡献的公版读物").trim(),
+      title: data.title.trim().slice(0, 200),
+      author: data.author.trim().slice(0, 120),
+      description,
       category: data.category || "文学",
       format: data.format,
       coverColor: data.coverColor || "#2c241c",
@@ -236,7 +339,7 @@ export const submitCommunityPdBook = createServerFn({ method: "POST" })
       pdBasisNote: data.pdBasisNote || "",
       sourceUrl: data.sourceUrl || "",
       yearOrEra: data.yearOrEra || "",
-      status: "approved",
+      status,
       license: "社区公版 · 用户声明 · 可举报",
       chapters,
       wordCount,
@@ -244,7 +347,7 @@ export const submitCommunityPdBook = createServerFn({ method: "POST" })
       createdAt: new Date().toISOString(),
     });
 
-    return { id, book };
+    return { id, book, truncated };
   });
 
 export const getCommunityBook = createServerFn({ method: "GET" })

@@ -138,7 +138,7 @@ function UploadPage() {
       }
 
       setPhase("contributing");
-      const { book } = await submitCommunityPdBook({
+      const result = await submitCommunityPdBook({
         data: {
           title: title.trim() || parsed.title || file.name,
           author: author.trim() || parsed.author || "未知作者",
@@ -156,10 +156,15 @@ function UploadPage() {
         },
       });
 
+      const book = result.book;
       cacheCommunityBook(book);
       addToShelf(book.id);
       void refreshCommunity();
-      toast.success("已发布到社区公版书城（用户声明）");
+      toast.success(
+        (result as { truncated?: boolean }).truncated
+          ? "已发布到社区公版（正文较长，已自动收录可展示章节）"
+          : "已发布到社区公版书城（用户声明）",
+      );
       void navigate({ to: "/book/$bookId", params: { bookId: book.id } });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "上传失败");
@@ -195,8 +200,7 @@ function UploadPage() {
             等）与可选来源链接。
           </li>
           <li>
-            社区全文上架需要可解析正文（TXT / MD / 文本型 EPUB）。扫描版 PDF
-            建议先转文本，或仅私有阅读。
+            社区全文上架需要可解析正文（TXT / MD / 文本型 EPUB）。中文整本体积较大，系统会自动收录可展示章节；超长完整文件请用「仅私有阅读」。扫描 PDF 请先转文本。
           </li>
         </ul>
       </div>
