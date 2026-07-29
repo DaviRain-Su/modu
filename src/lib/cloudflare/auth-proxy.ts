@@ -31,6 +31,21 @@ export async function proxyAuthToCloudflare(
   const path = incoming.pathname;
   const target = `${base}${path}${incoming.search}`;
 
+  const publicHost = (
+    request.headers.get("x-forwarded-host") ||
+    request.headers.get("host") ||
+    ""
+  )
+    .split(",")[0]
+    .trim();
+  const publicProto = (
+    request.headers.get("x-forwarded-proto") ||
+    incoming.protocol.replace(":", "") ||
+    "https"
+  )
+    .split(",")[0]
+    .trim();
+
   const headers = new Headers();
   const pass = [
     "content-type",
@@ -40,22 +55,20 @@ export async function proxyAuthToCloudflare(
     "referer",
     "user-agent",
     "x-forwarded-for",
-    "x-forwarded-host",
-    "x-forwarded-proto",
     "x-real-ip",
   ];
   for (const name of pass) {
     const v = request.headers.get(name);
     if (v) headers.set(name, v);
   }
+  // 始终带上正式站 host，供 Worker 侧 Better Auth / 日志对齐
+  if (publicHost) {
+    headers.set("x-forwarded-host", publicHost);
+    headers.set("x-forwarded-proto", publicProto || "https");
+  }
   // Ensure Origin is the public app origin for Better Auth CSRF
-  if (!headers.has("origin")) {
-    const host =
-      request.headers.get("x-forwarded-host") ||
-      request.headers.get("host") ||
-      "";
-    const proto = request.headers.get("x-forwarded-proto") || "https";
-    if (host) headers.set("origin", `${proto}://${host.split(",")[0].trim()}`);
+  if (!headers.has("origin") && publicHost) {
+    headers.set("origin", `${publicProto || "https"}://${publicHost}`);
   }
   // secret 可选：登录反代不强制；有则带上
   const secret = process.env.MODU_CF_API_SECRET?.trim();

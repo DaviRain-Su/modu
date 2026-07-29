@@ -34,8 +34,25 @@ export default {
         if (!env.DB) {
           return json({ error: "D1 binding missing" }, cors, 503);
         }
+        // 主应用反代到 workers.dev 时，Better Auth 必须看到正式站 URL
+        // （baseURL / OAuth redirect_uri / cookie 域都依赖 APP_ORIGIN）。
+        const origin = appOrigin(env);
+        const method = request.method.toUpperCase();
+        const body =
+          method === "GET" || method === "HEAD"
+            ? undefined
+            : await request.arrayBuffer();
+        const authRequest = new Request(
+          `${origin}${url.pathname}${url.search}`,
+          {
+            method: request.method,
+            headers: request.headers,
+            body: body && body.byteLength > 0 ? body : undefined,
+            redirect: "manual",
+          },
+        );
         const auth = createAuth(env);
-        const res = await auth.handler(request);
+        const res = await auth.handler(authRequest);
         return withCors(res, cors);
       }
 

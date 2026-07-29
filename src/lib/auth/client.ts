@@ -226,6 +226,9 @@ async function requestOAuthUrl(
  * Google / X 登录
  * - iframe / sandbox：弹窗
  * - 正式站顶层：整页跳转（最稳）
+ *
+ * 切勿在拿 OAuth URL / 写 state cookie 之后再 fire-and-forget signOut：
+ * signOut 会清掉 `__Secure-better-auth.state`，回调必挂（Google/X 失效、邮箱仍正常）。
  */
 export async function signIn(
   providerId: string,
@@ -238,8 +241,8 @@ export async function signIn(
   // 同步打开弹窗（必须在 await 之前，否则会被浏览器拦截）
   const popup = usePopup ? openSignInPopup(providerId) : null;
 
-  // 不 await signOut，避免卡住「没反应」
-  void authClient.signOut().catch(() => {});
+  // 只清本地 bearer，不调用 signOut（避免与 OAuth state cookie 竞态）
+  setBearerToken(null);
 
   if (usePopup) {
     if (!popup) {
@@ -247,8 +250,6 @@ export async function signIn(
         "浏览器拦截了登录弹窗。请允许本站弹窗后重试，或在新标签打开网站再登录。",
       );
     }
-    // 弹窗路径里会自己拿 token；先清旧 token 避免误用
-    setBearerToken(null);
     const token = await waitForPopupToken(popup);
     if (!token) throw new Error("登录已取消或未完成，请重试");
     setBearerToken(token);
@@ -263,14 +264,13 @@ export async function signIn(
     return;
   }
 
-  // 顶层：先拿到 URL 再跳转；失败则保留当前会话
+  // 顶层：先拿到 URL 再跳转（state cookie 已写入，期间禁止 signOut）
   try {
     const url = await requestOAuthUrl(
       providerId,
       callbackURL,
       errorCallbackURL,
     );
-    setBearerToken(null);
     window.location.assign(url);
   } catch (e) {
     // 二次尝试：better-auth 客户端插件

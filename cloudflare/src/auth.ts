@@ -345,16 +345,15 @@ export function createAuth(env: Env) {
       cookieCache: { enabled: true, maxAge: 300 },
     },
     advanced: {
+      // 与主应用 server.ts 一致：useSecureCookies 会加 __Secure- 前缀。
+      // 不要再写 __Host- 名，否则会变成非法的 __Secure-__Host-... 双前缀。
       useSecureCookies: true,
+      cookiePrefix: "grok-auth",
       defaultCookieAttributes: {
         secure: true,
         sameSite: "lax",
         path: "/",
         httpOnly: true,
-      },
-      cookies: {
-        session_token: { name: "__Host-grok-auth.session_token" },
-        session_data: { name: "__Host-grok-auth.session_data" },
       },
     },
     plugins: [
