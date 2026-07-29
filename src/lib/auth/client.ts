@@ -171,16 +171,26 @@ async function requestOAuthUrl(
     window.location.origin,
   ).toString();
 
-  const res = await fetch("/api/auth/sign-in/oauth2", {
-    method: "POST",
-    credentials: "include",
-    headers,
-    body: JSON.stringify({
-      providerId,
-      callbackURL: absCallback,
-      errorCallbackURL: absError,
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch("/api/auth/sign-in/oauth2", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...headers,
+        accept: "application/json",
+      },
+      body: JSON.stringify({
+        providerId,
+        callbackURL: absCallback,
+        errorCallbackURL: absError,
+      }),
+    });
+  } catch (netErr) {
+    throw new Error(
+      "无法连接登录服务（网络或响应解码失败）。请刷新后重试；若持续失败，请用邮箱登录。",
+    );
+  }
 
   const text = await res.text();
   let json: {

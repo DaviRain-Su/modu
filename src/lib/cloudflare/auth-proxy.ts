@@ -1,6 +1,10 @@
 /**
  * When a CF Worker URL is resolved (env or production default),
  * Better Auth runs on the Worker (D1). Same-origin `/api/auth/*` proxies there.
+ *
+ * 注意：Node/undici 的 fetch 会自动解压 gzip/br 响应体，若再原样转发
+ * Content-Encoding，浏览器会 ERR_CONTENT_DECODING_FAILED → 「Failed to fetch」，
+ * Google/X 按钮看起来点了没反应。必须剥离编码相关响应头。
  */
 import { resolveCfApiUrl } from "./defaults";
 
@@ -11,6 +15,28 @@ export function cloudflareAuthBackendConfigured(): boolean {
 export function cloudflareAuthBase(): string | null {
   return resolveCfApiUrl();
 }
+
+/** 反代时必须丢掉的响应头（编码/长度/连接类） */
+const STRIP_RESPONSE_HEADERS = new Set([
+  "content-encoding",
+  "content-length",
+  "transfer-encoding",
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "upgrade",
+  "cf-ray",
+  "cf-cache-status",
+  "cf-connecting-ip",
+  "nel",
+  "report-to",
+  "alt-svc",
+  "server",
+  "expect-ct",
+]);
 
 /**
  * Forward an `/api/auth/*` request to the Cloudflare Worker.
@@ -70,6 +96,9 @@ export async function proxyAuthToCloudflare(
   if (!headers.has("origin") && publicHost) {
     headers.set("origin", `${publicProto || "https"}://${publicHost}`);
   }
+  // 避免上游再压一层 gzip（双重保险）
+  headers.set("accept-encoding", "identity");
+
   // secret 可选：登录反代不强制；有则带上
   const secret = process.env.MODU_CF_API_SECRET?.trim();
   if (secret) headers.set("x-modu-secret", secret);
@@ -102,9 +131,13 @@ export async function proxyAuthToCloudflare(
 
   const out = new Headers();
   upstream.headers.forEach((value, key) => {
-    if (key.toLowerCase() === "set-cookie") return;
+    const k = key.toLowerCase();
+    if (k === "set-cookie") return;
+    if (STRIP_RESPONSE_HEADERS.has(k)) return;
     out.append(key, value);
   });
+
+  // 多 Set-Cookie 完整透传（OAuth state / session 依赖）
   const getSetCookie = (
     upstream.headers as Headers & { getSetCookie?: () => string[] }
   ).getSetCookie?.();
@@ -115,7 +148,10 @@ export async function proxyAuthToCloudflare(
     if (single) out.append("set-cookie", single);
   }
 
-  return new Response(upstream.body, {
+  // 读成 buffer 再返回，避免 streaming + 错误 length 头
+  const bodyBuf = await upstream.arrayBuffer();
+
+  return new Response(bodyBuf, {
     status: upstream.status,
     statusText: upstream.statusText,
     headers: out,
