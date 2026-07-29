@@ -7,6 +7,10 @@ import {
   cloudflareWorkerConfigured,
 } from "@/lib/cloudflare/worker-client";
 import { cloudflareAuthBackendConfigured } from "@/lib/cloudflare/auth-proxy";
+import {
+  resolveCfApiUrl,
+  resolveBetterAuthUrl,
+} from "@/lib/cloudflare/defaults";
 import { LOGIN_METHODS } from "@/lib/env/contract";
 
 export const Route = createFileRoute("/api/health")({
@@ -14,11 +18,12 @@ export const Route = createFileRoute("/api/health")({
     handlers: {
       GET: async () => {
         const has = (k: string) => Boolean(process.env[k]?.trim());
+        const cfUrl = resolveCfApiUrl();
         const cfAuth = cloudflareAuthBackendConfigured();
         const worker =
           cloudflareWorkerConfigured() || cfAuth
             ? await cfWorkerHealth()
-            : { ok: false, detail: null };
+            : { ok: false, detail: null, url: null };
         const appDataStore = dbSource;
         const authStore = cfAuth
           ? "cloudflare-d1"
@@ -48,12 +53,19 @@ export const Route = createFileRoute("/api/health")({
             methods: LOGIN_METHODS.map((m) => m.id),
             emailPassword: emailAndPasswordEnabled,
             federated: authConfigured || cfAuth,
-            betterAuthUrl: Boolean(process.env.BETTER_AUTH_URL?.trim()),
+            betterAuthUrl: Boolean(
+              process.env.BETTER_AUTH_URL?.trim() || resolveBetterAuthUrl(),
+            ),
             grokClient: has("GROK_AUTH_CLIENT_ID"),
             cloudflareD1: cfAuth,
           },
           cloudflare: {
-            workerUrl: Boolean(process.env.MODU_CF_API_URL?.trim()),
+            workerUrl: Boolean(cfUrl),
+            workerUrlValue: cfUrl,
+            workerUrlFromEnv: Boolean(process.env.MODU_CF_API_URL?.trim()),
+            workerUrlAuto: Boolean(
+              cfUrl && !process.env.MODU_CF_API_URL?.trim(),
+            ),
             workerReachable: worker.ok,
             authOnWorker: cfAuth,
             r2:
@@ -68,6 +80,11 @@ export const Route = createFileRoute("/api/health")({
             aiGateway: has("AI_GATEWAY_ID"),
             detail: worker.detail,
           },
+          tip: cfAuth
+            ? worker.ok
+              ? "已连接 Cloudflare Worker（登录走 D1）。请用邮箱重新注册一次。"
+              : "已配置 Worker URL 但健康检查失败，请确认 Worker 在线。"
+            : "开发模式：未自动连 Worker。生产会默认连 modu-api.davirain-yin.workers.dev。",
         };
         return new Response(JSON.stringify(body, null, 2), {
           status: 200,

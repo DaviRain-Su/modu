@@ -7,6 +7,7 @@ import {
   cloudflareWorkerConfigured,
 } from "@/lib/cloudflare/worker-client";
 import { cloudflareAuthBackendConfigured } from "@/lib/cloudflare/auth-proxy";
+import { resolveCfApiUrl } from "@/lib/cloudflare/defaults";
 
 /**
  * Public deployment diagnostics — no secrets.
@@ -71,7 +72,8 @@ export const getSystemStatus = createServerFn({ method: "GET" }).handler(
       r2Configured: r2Public || workerConfigured,
       cloudflareAiConfigured: cloudflareAiRest || workerReachable,
       cloudflareWorker: {
-        configured: Boolean(process.env.MODU_CF_API_URL?.trim()),
+        configured: Boolean(resolveCfApiUrl()),
+        workerUrl: resolveCfApiUrl(),
         reachable: workerReachable,
         authOnD1: cfAuth,
         detail: workerDetail,

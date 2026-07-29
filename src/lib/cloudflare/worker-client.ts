@@ -1,13 +1,11 @@
 /**
  * 主应用 → Cloudflare Worker 服务端客户端。
- * 配置 MODU_CF_API_URL + MODU_CF_API_SECRET 后启用。
+ * 生产默认连已部署的 Worker；可用 MODU_CF_API_URL 覆盖。
  */
+import { resolveCfApiUrl } from "./defaults";
 
 function baseUrl(): string | null {
-  const u =
-    process.env.MODU_CF_API_URL?.trim() ||
-    process.env.VITE_CF_API_URL?.trim();
-  return u ? u.replace(/\/$/, "") : null;
+  return resolveCfApiUrl();
 }
 
 function secret(): string {
@@ -24,24 +22,26 @@ function storageUrl(key: string): string {
   return `${base}/storage/${path}`;
 }
 
+/** 有 Worker URL 即视为已配置（登录不强制 secret） */
 export function cloudflareWorkerConfigured(): boolean {
-  return Boolean(baseUrl() && secret());
+  return Boolean(baseUrl());
 }
 
 export async function cfWorkerHealth(): Promise<{
   ok: boolean;
   detail: string | null;
+  url: string | null;
 }> {
   const base = baseUrl();
-  if (!base) return { ok: false, detail: null };
+  if (!base) return { ok: false, detail: null, url: null };
   try {
     const res = await fetch(`${base}/health`, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(8000),
     });
     const text = await res.text();
-    return { ok: res.ok, detail: text.slice(0, 800) };
+    return { ok: res.ok, detail: text.slice(0, 800), url: base };
   } catch (e) {
-    return { ok: false, detail: String(e) };
+    return { ok: false, detail: String(e), url: base };
   }
 }
 
@@ -51,13 +51,14 @@ export async function cfWorkerAiChat(input: {
   model?: string;
 }): Promise<{ text: string; model?: string }> {
   const base = baseUrl();
-  if (!base) throw new Error("MODU_CF_API_URL 未配置");
+  if (!base) throw new Error("Cloudflare Worker 未配置");
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (secret()) headers["x-modu-secret"] = secret();
   const res = await fetch(`${base}/ai/chat`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-modu-secret": secret(),
-    },
+    headers,
     body: JSON.stringify(input),
   });
   if (!res.ok) {
@@ -75,7 +76,7 @@ export async function cfWorkerPutObject(input: {
   contentType?: string;
 }): Promise<{ key: string; size: number }> {
   const base = baseUrl();
-  if (!base) throw new Error("MODU_CF_API_URL 未配置");
+  if (!base) throw new Error("Cloudflare Worker 未配置");
 
   let body: BodyInit;
   if (typeof input.data === "string") {
@@ -89,12 +90,14 @@ export async function cfWorkerPutObject(input: {
     ) as ArrayBuffer;
   }
 
+  const headers: Record<string, string> = {
+    "content-type": input.contentType || "application/octet-stream",
+  };
+  if (secret()) headers["x-modu-secret"] = secret();
+
   const res = await fetch(storageUrl(input.key), {
     method: "PUT",
-    headers: {
-      "content-type": input.contentType || "application/octet-stream",
-      "x-modu-secret": secret(),
-    },
+    headers,
     body,
   });
   if (!res.ok) {
@@ -165,14 +168,15 @@ export async function cfWorkerEnsureProfile(input: {
   displayName?: string;
 }): Promise<void> {
   const base = baseUrl();
-  if (!base || !secret()) return;
+  if (!base) return;
   try {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+    };
+    if (secret()) headers["x-modu-secret"] = secret();
     await fetch(`${base}/v1/profile/ensure`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-modu-secret": secret(),
-      },
+      headers,
       body: JSON.stringify(input),
     });
   } catch (e) {
