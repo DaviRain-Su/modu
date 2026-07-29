@@ -35,17 +35,29 @@ export const getSystemStatus = createServerFn({ method: "GET" }).handler(
       workerDetail = h.detail;
     }
 
-    const persistentDb = cfAuth || dbSource === "neon";
+    const appDataStore = dbSource;
+    const authStore = cfAuth
+      ? "cloudflare-d1"
+      : dbSource === "neon"
+        ? "neon"
+        : "pglite";
+    const objectStore =
+      workerReachable || r2Public
+        ? "cloudflare-r2"
+        : "indexeddb-local";
+    const persistentAppData = appDataStore === "neon";
+    const persistentAuth = cfAuth || appDataStore === "neon";
 
     return {
       ok: true as const,
-      database: cfAuth ? "cloudflare-d1" : dbSource,
-      persistentDatabase: persistentDb,
-      authBackend: cfAuth
-        ? "cloudflare-worker"
-        : dbSource === "neon"
-          ? "neon"
-          : "pglite",
+      /** @deprecated use authStore / appDataStore / objectStore */
+      database: appDataStore,
+      authStore,
+      appDataStore,
+      objectStore,
+      persistentDatabase: persistentAppData,
+      persistentAuth,
+      authBackend: cfAuth ? "cloudflare-worker" : authStore,
       emailPasswordEnabled: emailAndPasswordEnabled as boolean,
       federatedAuthConfigured: authConfigured || cfAuth,
       loginMethods: [
@@ -65,18 +77,21 @@ export const getSystemStatus = createServerFn({ method: "GET" }).handler(
         detail: workerDetail,
       },
       aiGatewayConfigured: has("AI_GATEWAY_ID"),
-      loginReady: persistentDb || process.env.NODE_ENV !== "production",
+      loginReady: persistentAuth || process.env.NODE_ENV !== "production",
       notes: [
         cfAuth
           ? workerReachable
-            ? "登录已接到 Cloudflare Worker + D1（账号会持久保存）。"
+            ? "登录已接到 Cloudflare Worker + D1（会话持久）。"
             : "已配置 MODU_CF_API_URL，但 Worker 不可达 — 请确认 wrangler deploy 与密钥。"
-          : "未配置 Cloudflare 后端：设置 MODU_CF_API_URL 后登录将写入 D1。",
-        !persistentDb
-          ? "当前无持久库：正式站请部署 Cloudflare Worker（推荐）或 DATABASE_URL。"
-          : "持久存储已就绪。",
+          : "登录使用主应用 Better Auth（Neon 或预览 PGLite）。",
+        persistentAppData
+          ? "业务数据（资料 / 批注 / AI 对话 / 书架元数据）在 Neon。"
+          : "业务数据当前在预览 PGLite（重启会清空）。部署请配置 DATABASE_URL。",
+        objectStore === "cloudflare-r2"
+          ? "图书对象存储可用（R2 / Worker）。"
+          : "图书文件目前仅本机 IndexedDB；配置 Worker 后可写 R2。",
         !grokAuthCustom
-          ? "Google / X：正式域需 GROK_AUTH_CLIENT_ID/SECRET（可写入 Worker secret）。"
+          ? "Google / X：正式域需 GROK_AUTH_CLIENT_ID/SECRET。"
           : "已配置 Google / X OAuth。",
         !cloudflareAiRest && !workerReachable
           ? "官方 AI 将本地降级，直到 Worker 或 CF 密钥就绪。"

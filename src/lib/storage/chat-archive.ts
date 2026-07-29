@@ -2,11 +2,13 @@
  * Account-linked AI conversation archives (Cloudflare R2 layout).
  *
  * Key: ai-chats/{userId}/{bookId}/{conversationId}.json
- * Preview: IndexedDB. With MODU_CF_API_* : also mirrors to Worker R2.
+ * Server: Postgres messages are the source of truth; optional R2 mirror.
+ * Browser: IndexedDB cache only (never required on the server).
  */
 
 import { idbGetObject, idbPutObject } from "./idb";
 import {
+  cfWorkerGetObjectText,
   cfWorkerPutObject,
   cloudflareWorkerConfigured,
 } from "@/lib/cloudflare/worker-client";
@@ -30,6 +32,10 @@ export type ChatArchive = {
   engine: string;
 };
 
+function isBrowser(): boolean {
+  return typeof window !== "undefined" && typeof indexedDB !== "undefined";
+}
+
 export function chatArchiveKey(parts: {
   userId: string;
   bookId: string;
@@ -38,21 +44,16 @@ export function chatArchiveKey(parts: {
   return `ai-chats/${parts.userId}/${parts.bookId}/${parts.conversationId}.json`;
 }
 
-export async function putChatArchive(archive: ChatArchive): Promise<{ key: string }> {
+export async function putChatArchive(
+  archive: ChatArchive,
+): Promise<{ key: string; mirrored: boolean }> {
   const key = chatArchiveKey({
     userId: archive.userId,
     bookId: archive.bookId,
     conversationId: archive.conversationId,
   });
   const json = JSON.stringify(archive, null, 2);
-  const blob = new Blob([json], { type: "application/json" });
-  await idbPutObject({
-    key,
-    blob,
-    contentType: "application/json",
-    size: blob.size,
-    updatedAt: Date.now(),
-  });
+  let mirrored = false;
 
   if (cloudflareWorkerConfigured()) {
     try {
@@ -61,20 +62,48 @@ export async function putChatArchive(archive: ChatArchive): Promise<{ key: strin
         data: json,
         contentType: "application/json",
       });
+      mirrored = true;
     } catch (e) {
       console.warn("[chat-archive] CF mirror failed", e);
     }
   }
 
-  return { key };
+  // Browser-only local cache. Server code must not depend on IndexedDB.
+  if (isBrowser()) {
+    try {
+      const blob = new Blob([json], { type: "application/json" });
+      await idbPutObject({
+        key,
+        blob,
+        contentType: "application/json",
+        size: blob.size,
+        updatedAt: Date.now(),
+      });
+    } catch (e) {
+      console.warn("[chat-archive] local cache write failed", e);
+    }
+  }
+
+  return { key, mirrored };
 }
 
 export async function getChatArchive(
   key: string,
 ): Promise<ChatArchive | null> {
-  const obj = await idbGetObject(key);
-  if (!obj) return null;
+  if (cloudflareWorkerConfigured()) {
+    try {
+      const text = await cfWorkerGetObjectText(key);
+      if (text) return JSON.parse(text) as ChatArchive;
+    } catch (e) {
+      console.warn("[chat-archive] CF read failed", e);
+    }
+  }
+
+  if (!isBrowser()) return null;
+
   try {
+    const obj = await idbGetObject(key);
+    if (!obj) return null;
     const text = await obj.blob.text();
     return JSON.parse(text) as ChatArchive;
   } catch {

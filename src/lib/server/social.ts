@@ -3,6 +3,7 @@ import { getSql } from "@/lib/db";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSessionUser } from "@/lib/auth/verify.server";
 import {
+  isListableMarketId,
   isPrivateBookId,
   sanitizePublicAnnotation,
 } from "@/lib/books/copyright";
@@ -89,8 +90,12 @@ export const recordBookRead = createServerFn({ method: "POST" })
   .handler(async ({ context, data: bookId }) => {
     const sql = await getSql();
     await ensureProfile(sql, context.userId);
+    // Same user + book + day counts once (see migrations/0007_book_reads_dedup.sql)
+    const day = new Date().toISOString().slice(0, 10);
     await sql`
-      insert into book_reads (user_id, book_id) values (${context.userId}, ${bookId})
+      insert into book_reads (user_id, book_id, read_day)
+      values (${context.userId}, ${bookId}, ${day}::date)
+      on conflict (user_id, book_id, read_day) do nothing
     `;
     return { ok: true as const };
   });
@@ -302,6 +307,8 @@ export const getHotBooks = createServerFn({ method: "GET" }).handler(
     `;
     const map = new Map<string, HotBookRow>();
     for (const r of reads) {
+      // Private uploads must never appear as clickable hot-list entries.
+      if (isPrivateBookId(r.book_id) || !isListableMarketId(r.book_id)) continue;
       map.set(r.book_id, {
         bookId: r.book_id,
         readCount: r.c,
@@ -310,6 +317,7 @@ export const getHotBooks = createServerFn({ method: "GET" }).handler(
       });
     }
     for (const a of annos) {
+      if (isPrivateBookId(a.book_id) || !isListableMarketId(a.book_id)) continue;
       const cur = map.get(a.book_id);
       if (cur) {
         cur.annotationCount = a.c;
@@ -356,7 +364,12 @@ export const getRecentPublicNotes = createServerFn({ method: "GET" }).handler(
         order by a.created_at desc
         limit 40
       `;
-      return rows.map(mapRow);
+      return rows.map((r) => {
+        const m = mapRow(r);
+        // Defense in depth: never leak private-book source text on public boards.
+        if (isPrivateBookId(m.bookId)) m.quote = "";
+        return m;
+      });
     } catch {
       return [] as AnnotationRow[];
     }

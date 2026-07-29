@@ -15,20 +15,35 @@ export const Route = createFileRoute("/api/health")({
       GET: async () => {
         const has = (k: string) => Boolean(process.env[k]?.trim());
         const cfAuth = cloudflareAuthBackendConfigured();
-        const worker = cloudflareWorkerConfigured() || cfAuth
-          ? await cfWorkerHealth()
-          : { ok: false, detail: null };
+        const worker =
+          cloudflareWorkerConfigured() || cfAuth
+            ? await cfWorkerHealth()
+            : { ok: false, detail: null };
+        const appDataStore = dbSource;
+        const authStore = cfAuth
+          ? "cloudflare-d1"
+          : dbSource === "neon"
+            ? "neon"
+            : "pglite";
         const body = {
           ok: true,
           service: "modu",
           time: new Date().toISOString(),
-          database: cfAuth ? "cloudflare-d1" : dbSource,
-          persistentDatabase: cfAuth || dbSource === "neon",
-          authBackend: cfAuth
-            ? "cloudflare-worker"
-            : dbSource === "neon"
-              ? "neon"
-              : "pglite",
+          authStore,
+          appDataStore,
+          objectStore:
+            worker.ok ||
+            Boolean(
+              process.env.VITE_R2_PUBLIC_URL?.trim() ||
+                process.env.R2_PUBLIC_URL?.trim(),
+            )
+              ? "cloudflare-r2"
+              : "indexeddb-local",
+          /** @deprecated use authStore / appDataStore */
+          database: appDataStore,
+          persistentDatabase: appDataStore === "neon",
+          persistentAuth: cfAuth || appDataStore === "neon",
+          authBackend: cfAuth ? "cloudflare-worker" : authStore,
           login: {
             methods: LOGIN_METHODS.map((m) => m.id),
             emailPassword: emailAndPasswordEnabled,

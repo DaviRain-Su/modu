@@ -103,6 +103,63 @@ export async function cfWorkerPutObject(input: {
   return (await res.json()) as { key: string; size: number };
 }
 
+export async function cfWorkerGetObjectText(key: string): Promise<string | null> {
+  const base = baseUrl();
+  if (!base) return null;
+  const res = await fetch(storageUrl(key), {
+    method: "GET",
+    headers: {
+      "x-modu-secret": secret(),
+    },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`CF R2 get ${res.status}`);
+  }
+  return res.text();
+}
+
+export async function cfWorkerDeleteObject(key: string): Promise<void> {
+  const base = baseUrl();
+  if (!base) throw new Error("MODU_CF_API_URL 未配置");
+  const res = await fetch(storageUrl(key), {
+    method: "DELETE",
+    headers: {
+      "x-modu-secret": secret(),
+    },
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`CF R2 delete ${res.status}`);
+  }
+}
+
+export async function cfWorkerCreateStorageTicket(input: {
+  key: string;
+  method: "GET" | "PUT" | "DELETE";
+  expiresInSeconds?: number;
+}): Promise<{ key: string; method: string; url: string; expiresAt: number }> {
+  const base = baseUrl();
+  if (!base) throw new Error("MODU_CF_API_URL 未配置");
+  const res = await fetch(`${base}/v1/storage/ticket`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-modu-secret": secret(),
+    },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`CF storage ticket ${res.status}: ${text.slice(0, 200)}`);
+  }
+  return (await res.json()) as {
+    key: string;
+    method: string;
+    url: string;
+    expiresAt: number;
+  };
+}
+
 export async function cfWorkerEnsureProfile(input: {
   userId: string;
   displayName?: string;

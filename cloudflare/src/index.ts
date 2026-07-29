@@ -4,8 +4,8 @@
  * - /api/auth/*     Better Auth + D1（登录持久化）
  * - /health
  * - /ai/chat        Workers AI
- * - /storage/*      R2
- * - /v1/*           业务 API（档案 / 批注等，需密钥或会话）
+ * - /storage/*      R2（需密钥或签名 ticket）
+ * - /v1/*           业务 API（档案 / 存储 ticket）
  */
 
 import { createAuth } from "./auth";
@@ -15,6 +15,8 @@ import {
   corsHeaders,
   appOrigin,
 } from "./env";
+
+const encoder = new TextEncoder();
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -70,10 +72,14 @@ export default {
         return await handleAiChat(request, env, cors);
       }
 
-      if (path.startsWith("/storage")) {
-        if (request.method !== "GET" && !assertSecret(env, request)) {
+      if (path === "/v1/storage/ticket" && request.method === "POST") {
+        if (!assertSecret(env, request)) {
           return json({ error: "unauthorized" }, cors, 401);
         }
+        return await createStorageTicket(request, env, cors, url);
+      }
+
+      if (path.startsWith("/storage")) {
         return await handleStorage(request, env, cors, path, url);
       }
 
@@ -118,7 +124,9 @@ async function ensureProfile(
   if (!body.userId) return json({ error: "userId required" }, cors, 400);
   await env.DB.prepare(
     `insert into user_profiles (user_id, display_name) values (?, ?)
-     on conflict(user_id) do nothing`,
+     on conflict(user_id) do update set
+       display_name = coalesce(excluded.display_name, user_profiles.display_name),
+       updated_at = datetime('now')`,
   )
     .bind(body.userId, body.displayName || null)
     .run();
@@ -181,6 +189,48 @@ function extractWorkersAiText(result: unknown): string {
   return JSON.stringify(result).slice(0, 2000);
 }
 
+async function createStorageTicket(
+  request: Request,
+  env: Env,
+  cors: Record<string, string>,
+  url: URL,
+): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as {
+    key?: string;
+    method?: string;
+    expiresInSeconds?: number;
+  };
+  const key = sanitizeKey(body.key || "");
+  const method = (body.method || "GET").toUpperCase();
+  if (!key) return json({ error: "invalid key" }, cors, 400);
+  if (!["GET", "PUT", "DELETE"].includes(method)) {
+    return json({ error: "invalid method" }, cors, 400);
+  }
+  const expiresIn = Math.min(
+    Math.max(Number(body.expiresInSeconds) || 600, 30),
+    3600,
+  );
+  const exp = Math.floor(Date.now() / 1000) + expiresIn;
+  const token = await signTicket(env, method, key, exp);
+  const ticketUrl = new URL(`/storage/${encodeURIComponent(key).replace(/%2F/g, "/")}`, url.origin);
+  // Keep path segments encoded individually
+  ticketUrl.pathname = `/storage/${key
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`;
+  ticketUrl.searchParams.set("exp", String(exp));
+  ticketUrl.searchParams.set("sig", token);
+  return json(
+    {
+      key,
+      method,
+      url: ticketUrl.toString(),
+      expiresAt: exp * 1000,
+    },
+    cors,
+  );
+}
+
 async function handleStorage(
   request: Request,
   env: Env,
@@ -191,6 +241,9 @@ async function handleStorage(
   if (!env.BOOKS) return json({ error: "R2 binding missing" }, cors, 503);
 
   if (path === "/storage" && request.method === "GET") {
+    if (!assertSecret(env, request)) {
+      return json({ error: "unauthorized" }, cors, 401);
+    }
     const prefix = url.searchParams.get("prefix") || "";
     const listed = await env.BOOKS.list({ prefix, limit: 100 });
     return json(
@@ -206,10 +259,17 @@ async function handleStorage(
     );
   }
 
-  const key = decodeURIComponent(path.replace(/^\/storage\/?/, ""));
-  if (!key || key.includes("..")) {
+  const key = sanitizeKey(
+    decodeURIComponent(path.replace(/^\/storage\/?/, "")),
+  );
+  if (!key) {
     return json({ error: "invalid key" }, cors, 400);
   }
+
+  const authorized =
+    assertSecret(env, request) ||
+    (await verifyTicket(env, request.method, key, url));
+  if (!authorized) return json({ error: "unauthorized" }, cors, 401);
 
   if (request.method === "GET") {
     const obj = await env.BOOKS.get(key);
@@ -220,6 +280,7 @@ async function handleStorage(
       obj.httpMetadata?.contentType || "application/octet-stream",
     );
     headers.set("etag", obj.httpEtag);
+    headers.set("cache-control", "private, max-age=60");
     return new Response(obj.body, { status: 200, headers });
   }
 
@@ -239,6 +300,65 @@ async function handleStorage(
   }
 
   return json({ error: "method not allowed" }, cors, 405);
+}
+
+function sanitizeKey(key: string): string {
+  const cleaned = key
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("/");
+  if (!cleaned || cleaned.includes("..") || cleaned.startsWith("/")) return "";
+  return cleaned;
+}
+
+async function signTicket(
+  env: Env,
+  method: string,
+  key: string,
+  exp: number,
+): Promise<string> {
+  const secret = env.MODU_API_SECRET || env.BETTER_AUTH_SECRET || "";
+  const material = `${method.toUpperCase()}\n${key}\n${exp}`;
+  const keyBytes = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", keyBytes, encoder.encode(material));
+  return bufferToBase64Url(sig);
+}
+
+async function verifyTicket(
+  env: Env,
+  method: string,
+  key: string,
+  url: URL,
+): Promise<boolean> {
+  const exp = Number(url.searchParams.get("exp") || 0);
+  const sig = url.searchParams.get("sig") || "";
+  if (!exp || !sig) return false;
+  if (exp < Math.floor(Date.now() / 1000)) return false;
+  const expected = await signTicket(env, method, key, exp);
+  return timingSafeEqual(expected, sig);
+}
+
+function bufferToBase64Url(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]!);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let out = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    out |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return out === 0;
 }
 
 function json(

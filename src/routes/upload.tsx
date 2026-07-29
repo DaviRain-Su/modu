@@ -111,8 +111,13 @@ function UploadPage() {
             personalUseAck: true,
           },
           (p) => setPhase(p),
+          user?.id,
         );
-        toast.success("已加入个人书架（私有）");
+        toast.success(
+          user
+            ? "已加入个人书架，元数据已同步账户（文件优先写对象存储）"
+            : "已加入本机书架（私有）",
+        );
         void navigate({ to: "/read/$bookId", params: { bookId: book.id } });
         return;
       }

@@ -35,11 +35,9 @@ function assertPublicDomainBook(bookId: string) {
   if (isPrivateBookId(bookId)) {
     throw new Error("私有图书不支持公开弹幕");
   }
-  if (!isListableMarketId(bookId) && !bookId.startsWith("community_")) {
-    // community may not be in static market list but is public domain community
-    if (!bookId.startsWith("pd_") && !bookId.startsWith("community_")) {
-      throw new Error("仅公版书城图书支持弹幕共读");
-    }
+  // Official market ids + community_* are listable; reject everything else.
+  if (!isListableMarketId(bookId)) {
+    throw new Error("仅公版书城图书支持弹幕共读");
   }
 }
 

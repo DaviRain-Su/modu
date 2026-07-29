@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { BookMarked, Upload } from "lucide-react";
 import { BookCard } from "@/components/books/BookCard";
 import { Button } from "@/components/ui/button";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useLibraryStore } from "@/lib/store/library";
 
 export const Route = createFileRoute("/shelf")({
@@ -10,11 +11,22 @@ export const Route = createFileRoute("/shelf")({
 
 function ShelfPage() {
   const ready = useLibraryStore((s) => s.ready);
+  const syncing = useLibraryStore((s) => s.syncing);
+  const cloudUserId = useLibraryStore((s) => s.cloudUserId);
   const shelfBooks = useLibraryStore((s) => s.shelfBooks);
+  const { user } = useCurrentUserState();
   const books = ready ? shelfBooks() : [];
 
   const reading = books.filter((b) => (b.progress ?? 0) > 0 && (b.progress ?? 0) < 100);
   const rest = books.filter((b) => !reading.includes(b));
+
+  const progressHint = !user
+    ? "进度保存在本机"
+    : syncing
+      ? "正在同步云端书架…"
+      : cloudUserId
+        ? "进度与书架已与账户同步"
+        : "登录后可同步进度与书架";
 
   return (
     <div className="space-y-8">
@@ -22,7 +34,7 @@ function ShelfPage() {
         <div>
           <h1 className="font-serif text-3xl font-medium tracking-tight">书架</h1>
           <p className="mt-1 text-fg-muted">
-            {ready ? `${books.length} 本藏书 · 进度保存在本机` : "加载中…"}
+            {ready ? `${books.length} 本藏书 · ${progressHint}` : "加载中…"}
           </p>
         </div>
         <div className="flex gap-2">

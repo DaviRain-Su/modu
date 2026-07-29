@@ -17,6 +17,10 @@
  * `client.ts` (`signIn` → `openSignInPopup`).
  */
 import { auth, SESSION_TOKEN_COOKIE } from "./server";
+import {
+  cloudflareAuthBackendConfigured,
+  proxyAuthToCloudflare,
+} from "@/lib/cloudflare/auth-proxy";
 
 /** Message shape the popup posts to the opener (must match `client.ts`). */
 type PopupMessage = {
@@ -35,7 +39,11 @@ export async function handleAuthPopupRequest(request: Request): Promise<Response
 
   if (done) {
     const errored = url.searchParams.has("error");
-    const token = errored ? null : readCookie(request, SESSION_TOKEN_COOKIE);
+    const token = errored
+      ? null
+      : readCookie(request, SESSION_TOKEN_COOKIE) ||
+        readCookie(request, "better-auth.session_token") ||
+        readCookie(request, "__Secure-better-auth.session_token");
     const message: PopupMessage = {
       source: "grok-auth-popup",
       token,
@@ -62,17 +70,39 @@ export async function handleAuthPopupRequest(request: Request): Promise<Response
   // Stay first-party for the callback so the session cookie lands in THIS popup.
   const back = `${url.origin}/auth/popup?done=1`;
   try {
-    const apiRes = await auth.api.signInWithOAuth2({
-      body: {
-        providerId,
-        callbackURL: back,
-        errorCallbackURL: `${back}&error=1`,
-      },
-      // Forward the preview host so Better Auth derives the correct baseURL /
-      // redirect_uri for the dynamic `*.grok-sandbox.com` origin.
-      headers: request.headers,
-      asResponse: true,
-    });
+    let apiRes: Response;
+    if (cloudflareAuthBackendConfigured()) {
+      // Hit the same proxy path as the SPA so OAuth state lives on the CF auth backend.
+      const proxyReq = new Request(
+        new URL("/api/auth/sign-in/oauth2", request.url),
+        {
+          method: "POST",
+          headers: (() => {
+            const headers = new Headers(request.headers);
+            headers.set("content-type", "application/json");
+            return headers;
+          })(),
+          body: JSON.stringify({
+            providerId,
+            callbackURL: back,
+            errorCallbackURL: `${back}&error=1`,
+          }),
+        },
+      );
+      apiRes = await proxyAuthToCloudflare(proxyReq);
+    } else {
+      apiRes = await auth.api.signInWithOAuth2({
+        body: {
+          providerId,
+          callbackURL: back,
+          errorCallbackURL: `${back}&error=1`,
+        },
+        // Forward the preview host so Better Auth derives the correct baseURL /
+        // redirect_uri for the dynamic `*.grok-sandbox.com` origin.
+        headers: request.headers,
+        asResponse: true,
+      });
+    }
 
     if (!apiRes.ok) {
       const detail = await apiRes.text().catch(() => "");
@@ -98,8 +128,14 @@ export async function handleAuthPopupRequest(request: Request): Promise<Response
     // 302 to the broker (which headlessly forwards to Google/X). Forward any
     // Set-Cookie (OAuth state / PKCE) so the callback can complete in this popup.
     const headers = new Headers({ location, "cache-control": "no-store" });
-    for (const cookie of apiRes.headers.getSetCookie()) {
-      headers.append("set-cookie", cookie);
+    const getSetCookie = (
+      apiRes.headers as Headers & { getSetCookie?: () => string[] }
+    ).getSetCookie?.();
+    if (getSetCookie?.length) {
+      for (const cookie of getSetCookie) headers.append("set-cookie", cookie);
+    } else {
+      const single = apiRes.headers.get("set-cookie");
+      if (single) headers.append("set-cookie", single);
     }
     return new Response(null, { status: 302, headers });
   } catch (err) {

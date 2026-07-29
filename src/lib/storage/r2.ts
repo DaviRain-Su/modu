@@ -1,15 +1,7 @@
 /**
- * Cloudflare R2 storage abstraction.
- *
- * Production: set VITE_R2_PUBLIC_URL (+ server-side R2 credentials on the
- * Worker / API route) to use real Cloudflare R2 object storage.
- * Preview / offline: falls back to IndexedDB (see idb.ts) so uploads work
- * without any Cloudflare account.
- *
- * Object key layout (aligned with liber-style account blobs):
- *   books/{owner}/{bookId}/{filename}
- *   covers/{owner}/{bookId}.jpg
- *   ai-chats/{userId}/{bookId}/{conversationId}.json
+ * Object storage for uploaded books.
+ * - With Cloudflare Worker: signed tickets → R2 (plus local IDB cache)
+ * - Offline / unconfigured: IndexedDB only
  */
 
 import {
@@ -19,14 +11,23 @@ import {
   idbPutObject,
   type StoredObject,
 } from "./idb";
+import {
+  createBookDeleteTicket,
+  createBookReadTicket,
+  createBookUploadTicket,
+} from "@/lib/server/storage";
 
 export type StorageBackend = "r2" | "indexeddb";
 
 const R2_PUBLIC = (import.meta as ImportMeta & { env?: Record<string, string> })
   .env?.VITE_R2_PUBLIC_URL as string | undefined;
 
+const CF_API_HINT = (import.meta as ImportMeta & {
+  env?: Record<string, string>;
+}).env?.VITE_CF_API_URL as string | undefined;
+
 export function storageBackend(): StorageBackend {
-  return R2_PUBLIC ? "r2" : "indexeddb";
+  return CF_API_HINT?.trim() || R2_PUBLIC?.trim() ? "r2" : "indexeddb";
 }
 
 export function objectKey(parts: {
@@ -43,22 +44,12 @@ export async function putBookFile(input: {
   fileName: string;
   blob: Blob;
   contentType?: string;
-}): Promise<{ key: string; url: string }> {
+}): Promise<{ key: string; url: string; backend: StorageBackend }> {
   const key = objectKey(input);
   const contentType =
     input.contentType || input.blob.type || "application/octet-stream";
 
-  if (R2_PUBLIC) {
-    await idbPutObject({
-      key,
-      blob: input.blob,
-      contentType,
-      size: input.blob.size,
-      updatedAt: Date.now(),
-    });
-    return { key, url: `${R2_PUBLIC.replace(/\/$/, "")}/${key}` };
-  }
-
+  // Always keep a local cache so the reader works offline.
   await idbPutObject({
     key,
     blob: input.blob,
@@ -66,21 +57,71 @@ export async function putBookFile(input: {
     size: input.blob.size,
     updatedAt: Date.now(),
   });
-  return { key, url: `idb://${key}` };
+
+  try {
+    const ticket = await createBookUploadTicket({
+      data: { bookId: input.bookId, fileName: input.fileName },
+    });
+    const res = await fetch(ticket.url, {
+      method: "PUT",
+      headers: { "content-type": contentType },
+      body: input.blob,
+    });
+    if (!res.ok) throw new Error(`R2 upload failed (${res.status})`);
+    return {
+      key: ticket.key || key,
+      url: R2_PUBLIC
+        ? `${R2_PUBLIC.replace(/\/$/, "")}/${ticket.key || key}`
+        : ticket.url.split("?")[0]!,
+      backend: "r2",
+    };
+  } catch (error) {
+    console.warn("[storage] R2 upload unavailable, kept local copy", error);
+  }
+
+  return { key, url: `idb://${key}`, backend: "indexeddb" };
 }
 
 export async function getBookFile(key: string): Promise<StoredObject | null> {
-  return idbGetObject(key);
+  const local = await idbGetObject(key);
+  if (local) return local;
+
+  try {
+    const ticket = await createBookReadTicket({ data: key });
+    const res = await fetch(ticket.url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const contentType =
+      res.headers.get("content-type") || "application/octet-stream";
+    const obj: StoredObject = {
+      key,
+      blob,
+      contentType,
+      size: blob.size,
+      updatedAt: Date.now(),
+    };
+    await idbPutObject(obj);
+    return obj;
+  } catch (error) {
+    console.warn("[storage] R2 read failed", error);
+    return null;
+  }
 }
 
 export async function getBookBlobUrl(key: string): Promise<string | null> {
-  const obj = await idbGetObject(key);
+  const obj = await getBookFile(key);
   if (!obj) return null;
   return URL.createObjectURL(obj.blob);
 }
 
 export async function deleteBookFile(key: string): Promise<void> {
   await idbDeleteObject(key);
+  try {
+    const ticket = await createBookDeleteTicket({ data: key });
+    await fetch(ticket.url, { method: "DELETE" });
+  } catch (error) {
+    console.warn("[storage] R2 delete failed", error);
+  }
 }
 
 export async function listUserBooks(owner: string): Promise<string[]> {
@@ -94,18 +135,18 @@ export function describeStorage(): {
   label: string;
   detail: string;
 } {
-  if (R2_PUBLIC) {
+  if (storageBackend() === "r2") {
     return {
       backend: "r2",
       label: "Cloudflare R2",
       detail:
-        "图书与 AI 对话档案写入 R2（ai-chats/{user}/…）。官方 AI 经 Pi 可接 Workers AI / AI Gateway。",
+        "登录后上传经 Worker 签名写入 R2，本机保留缓存副本以便离线阅读。",
     };
   }
   return {
     backend: "indexeddb",
-    label: "Cloudflare R2（本地模拟）",
+    label: "本机对象存储",
     detail:
-      "预览用 IndexedDB 模拟 R2：图书与 ai-chats 对话档案共用同一 key 布局。部署后配置 R2 / Workers AI 即可切换。",
+      "当前未配置 Cloudflare Worker 时，图书保存在本机 IndexedDB。配置后将写入 R2。",
   };
 }

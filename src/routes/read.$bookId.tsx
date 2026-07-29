@@ -42,6 +42,10 @@ import {
   type QuoteThread,
 } from "@/lib/server/social";
 import {
+  listChapterDanmaku,
+  type DanmakuRow,
+} from "@/lib/server/danmaku";
+import {
   pullReadingProgress,
   pushReadingProgress,
 } from "@/lib/server/progress";
@@ -113,6 +117,8 @@ function ReaderPage() {
   const [cloudSynced, setCloudSynced] = useState(false);
   const [threads, setThreads] = useState<QuoteThread[]>([]);
   const [threadQuote, setThreadQuote] = useState<string | null>(null);
+  const [danmaku, setDanmaku] = useState<DanmakuRow[]>([]);
+  const [danmakuEnabled, setDanmakuEnabled] = useState(true);
   const [epubToc, setEpubToc] = useState<EpubTocItem[]>([]);
   const [epubCfi, setEpubCfi] = useState<string | null>(
     stored?.lastCfi ?? null,
@@ -232,6 +238,26 @@ function ReaderPage() {
       .then(setThreads)
       .catch(() => setThreads([]));
   }, [supportsCommunity, book?.id]);
+
+  useEffect(() => {
+    if (!supportsCommunity || !book || !chapter?.id) {
+      setDanmaku([]);
+      return;
+    }
+    let cancelled = false;
+    void listChapterDanmaku({
+      data: { bookId: book.id, chapterId: chapter.id },
+    })
+      .then((rows) => {
+        if (!cancelled) setDanmaku(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setDanmaku([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [supportsCommunity, book?.id, chapter?.id]);
 
   const scheduleCloudPush = useCallback(
     (pct: number, extra?: { chapterId?: string; page?: number; cfi?: string }) => {
@@ -582,7 +608,14 @@ function ReaderPage() {
               layout={prefs.layout}
               highlights={localHighlights}
               publicThreads={supportsCommunity ? threads : []}
+              danmaku={supportsCommunity ? danmaku : []}
+              danmakuEnabled={danmakuEnabled}
+              signedIn={Boolean(user)}
               onOpenThread={(q) => setThreadQuote(q)}
+              onDanmakuPosted={(row) =>
+                setDanmaku((prev) => [...prev, row])
+              }
+              onToggleDanmaku={() => setDanmakuEnabled((v) => !v)}
               onProgress={onProgress}
               onSelect={setSel}
               onChapterNav={(dir) => {

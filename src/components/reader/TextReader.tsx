@@ -21,9 +21,15 @@ import {
   type LocalHighlight,
 } from "@/lib/reader/highlights";
 import type { QuoteThread } from "@/lib/server/social";
+import type { DanmakuRow } from "@/lib/server/danmaku";
 import { quotesMatch } from "@/lib/reader/quote-key";
 import type { SelectionAnchor } from "./SelectionToolbar";
 import { QuoteHeatBadge } from "./QuoteThreadSheet";
+import {
+  DanmakuChapterBar,
+  ParaDanmaku,
+  useDanmakuMap,
+} from "./DanmakuLayer";
 import { cn } from "@/lib/utils";
 
 function splitSentences(paragraph: string): string[] {
@@ -59,7 +65,12 @@ export function TextReader({
   layout = "auto",
   highlights = [],
   publicThreads = [],
+  danmaku = [],
+  danmakuEnabled = true,
+  signedIn = false,
   onOpenThread,
+  onDanmakuPosted,
+  onToggleDanmaku,
   onProgress,
   onSelect,
   onChapterNav,
@@ -75,7 +86,12 @@ export function TextReader({
   layout?: ReaderLayout;
   highlights?: Highlight[];
   publicThreads?: QuoteThread[];
+  danmaku?: DanmakuRow[];
+  danmakuEnabled?: boolean;
+  signedIn?: boolean;
   onOpenThread?: (quote: string) => void;
+  onDanmakuPosted?: (row: DanmakuRow) => void;
+  onToggleDanmaku?: () => void;
   onProgress: (pct: number) => void;
   onSelect: (anchor: SelectionAnchor | null) => void;
   onChapterNav?: (dir: "prev" | "next") => void;
@@ -113,6 +129,11 @@ export function TextReader({
         paragraphs.some((p) => p.includes(t.quote.slice(0, 12))),
     );
   }, [publicThreads, chapter.id, paragraphs]);
+
+  const supportsDanmaku =
+    book.visibility === "public_domain" ||
+    book.visibility === "public_domain_community";
+  const danmakuByPara = useDanmakuMap(danmaku);
 
   const markSource = useMemo(() => {
     const fromPublic: LocalHighlight[] = chapterThreads.map((t) => ({
@@ -435,53 +456,77 @@ export function TextReader({
         <div className="rd-chap-rule" aria-hidden />
       </header>
 
+      {supportsDanmaku && (
+        <DanmakuChapterBar
+          total={danmaku.length}
+          enabled={danmakuEnabled}
+          onToggle={() => onToggleDanmaku?.()}
+          signedIn={signedIn}
+        />
+      )}
+
       <div className="rd-text">
         {paragraphs.map((para, pi) => {
           const sentences = splitSentences(para);
+          const paraDanmaku = danmakuByPara.get(pi) || [];
           return (
-            <p key={pi} className={cn(pi === 0 && "rd-first")}>
-              {sentences.map((sent, si) => {
-                const segs = applyHighlightMarks(sent, markSource);
-                const heat = heatFor(sent);
-                const hasCommunity = heat > 0;
-                return (
-                  <span
-                    key={si}
-                    className={cn("rd-sentence", hasCommunity && "has-heat")}
-                    data-sid={`${pi}-${si}`}
-                    onClick={(e) => {
-                      if (!hasCommunity) return;
-                      if (window.getSelection()?.toString().trim()) return;
-                      e.stopPropagation();
-                      onOpenThread?.(sent);
-                    }}
-                  >
-                    {segs.map((s, j) =>
-                      s.kind === "mark" ? (
-                        <mark
-                          key={j}
-                          className={cn("rd-mark", markClass(s.color))}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenThread?.(s.text);
-                          }}
-                        >
-                          {s.text}
-                        </mark>
-                      ) : (
-                        <span key={j}>{s.text}</span>
-                      ),
-                    )}
-                    {hasCommunity && (
-                      <QuoteHeatBadge
-                        count={heat}
-                        onClick={() => onOpenThread?.(sent)}
-                      />
-                    )}
-                  </span>
-                );
-              })}
-            </p>
+            <div key={pi}>
+              <p className={cn(pi === 0 && "rd-first")}>
+                {sentences.map((sent, si) => {
+                  const segs = applyHighlightMarks(sent, markSource);
+                  const heat = heatFor(sent);
+                  const hasCommunity = heat > 0;
+                  return (
+                    <span
+                      key={si}
+                      className={cn("rd-sentence", hasCommunity && "has-heat")}
+                      data-sid={`${pi}-${si}`}
+                      onClick={(e) => {
+                        if (!hasCommunity) return;
+                        if (window.getSelection()?.toString().trim()) return;
+                        e.stopPropagation();
+                        onOpenThread?.(sent);
+                      }}
+                    >
+                      {segs.map((s, j) =>
+                        s.kind === "mark" ? (
+                          <mark
+                            key={j}
+                            className={cn("rd-mark", markClass(s.color))}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenThread?.(s.text);
+                            }}
+                          >
+                            {s.text}
+                          </mark>
+                        ) : (
+                          <span key={j}>{s.text}</span>
+                        ),
+                      )}
+                      {hasCommunity && (
+                        <QuoteHeatBadge
+                          count={heat}
+                          onClick={() => onOpenThread?.(sent)}
+                        />
+                      )}
+                    </span>
+                  );
+                })}
+              </p>
+              {supportsDanmaku && (
+                <ParaDanmaku
+                  bookId={book.id}
+                  chapterId={chapter.id}
+                  paraIndex={pi}
+                  quote={para.slice(0, 80)}
+                  items={paraDanmaku}
+                  enabled={danmakuEnabled}
+                  signedIn={signedIn}
+                  onPosted={(row) => onDanmakuPosted?.(row)}
+                />
+              )}
+            </div>
           );
         })}
       </div>

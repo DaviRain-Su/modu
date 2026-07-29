@@ -30,6 +30,8 @@ export const pushReadingProgress = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const sql = await getSql();
+    // Last-write-wins at the statement level; empty CFI/page are allowed so
+    // text-mode readers can sync percentage-only progress.
     await sql`
       insert into reading_progress_cloud (
         user_id, book_id, progress, chapter_id, page, cfi, updated_at
@@ -48,6 +50,7 @@ export const pushReadingProgress = createServerFn({ method: "POST" })
         page = excluded.page,
         cfi = excluded.cfi,
         updated_at = now()
+      where reading_progress_cloud.updated_at <= excluded.updated_at
     `;
     return { ok: true as const };
   });

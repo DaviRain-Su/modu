@@ -15,10 +15,16 @@ import {
   getCommunityBook,
   listCommunityPdBooks,
 } from "@/lib/server/community-books";
+import {
+  deleteMyUploadedBook,
+  listMyLibrary,
+  saveUploadedBook,
+  setShelfMembership,
+} from "@/lib/server/library";
+import { listMyCloudProgress } from "@/lib/server/progress";
 import { uid } from "@/lib/utils";
 
 const SHELF_KEY = "modu_shelf_ids";
-const OWNER = "local-reader";
 
 function loadShelfIds(): string[] {
   if (typeof localStorage === "undefined") return [];
@@ -33,6 +39,10 @@ function loadShelfIds(): string[] {
 function saveShelfIds(ids: string[]) {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(SHELF_KEY, JSON.stringify(ids));
+}
+
+function uniqueIds(ids: string[]): string[] {
+  return [...new Set(ids.filter(Boolean))];
 }
 
 function normalizeBook(raw: Book): Book {
@@ -56,11 +66,14 @@ function normalizeBook(raw: Book): Book {
 
 interface LibraryState {
   ready: boolean;
+  syncing: boolean;
+  cloudUserId: string | null;
   shelfIds: string[];
   uploaded: Book[];
   community: Book[];
   progressMap: Record<string, ReadingProgress>;
   init: () => Promise<void>;
+  syncFromCloud: (userId: string | null | undefined) => Promise<void>;
   refreshCommunity: () => Promise<void>;
   addToShelf: (bookId: string) => void;
   removeFromShelf: (bookId: string) => Promise<void>;
@@ -73,6 +86,7 @@ interface LibraryState {
       personalUseAck: boolean;
     },
     onPhase?: (phase: string) => void,
+    ownerId?: string | null,
   ) => Promise<Book>;
   cacheCommunityBook: (book: Book) => void;
   getBook: (id: string) => Book | undefined;
@@ -86,6 +100,8 @@ interface LibraryState {
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   ready: false,
+  syncing: false,
+  cloudUserId: null,
   shelfIds: [],
   uploaded: [],
   community: [],
@@ -111,7 +127,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         ...uploaded.map((b) => b.id),
         ...community.map((b) => b.id),
       ]);
-      const cleaned = shelfIds.filter((id) => valid.has(id) || id.startsWith("community_"));
+      const cleaned = shelfIds.filter(
+        (id) => valid.has(id) || id.startsWith("community_"),
+      );
       if (cleaned.length !== shelfIds.length) saveShelfIds(cleaned);
       set({
         ready: true,
@@ -122,6 +140,84 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       });
     } catch {
       set({ ready: true, shelfIds: loadShelfIds() });
+    }
+  },
+
+  syncFromCloud: async (userId) => {
+    if (!userId) {
+      set({ cloudUserId: null });
+      return;
+    }
+    if (get().syncing && get().cloudUserId === userId) return;
+    set({ syncing: true, cloudUserId: userId });
+    try {
+      const [remote, cloudProgress] = await Promise.all([
+        listMyLibrary().catch(() => null),
+        listMyCloudProgress().catch(() => [] as Awaited<
+          ReturnType<typeof listMyCloudProgress>
+        >),
+      ]);
+
+      const localMap = new Map(get().uploaded.map((b) => [b.id, b]));
+      if (remote) {
+        for (const book of remote.books) {
+          const merged = normalizeBook({
+            ...book,
+            chapters: localMap.get(book.id)?.chapters ?? book.chapters,
+          });
+          localMap.set(book.id, merged);
+          await idbSaveBookMeta(book.id, merged);
+        }
+      }
+
+      const progressMap = { ...get().progressMap };
+      const mergeProgress = (p: ReadingProgress) => {
+        const local = progressMap[p.bookId];
+        if (!local || (local.updatedAt ?? 0) <= p.updatedAt) {
+          progressMap[p.bookId] = {
+            ...p,
+            bookmarks: p.bookmarks?.length
+              ? p.bookmarks
+              : (local?.bookmarks ?? []),
+            highlights: p.highlights?.length
+              ? p.highlights
+              : (local?.highlights ?? []),
+          };
+          void idbSaveProgress(p.bookId, progressMap[p.bookId]!);
+        }
+      };
+
+      if (remote) {
+        for (const p of remote.progress) mergeProgress(p);
+      }
+      for (const c of cloudProgress) {
+        mergeProgress({
+          bookId: c.bookId,
+          progress: c.progress,
+          lastChapterId: c.chapterId ?? undefined,
+          lastPage: c.page ?? undefined,
+          lastCfi: c.cfi ?? undefined,
+          bookmarks: progressMap[c.bookId]?.bookmarks ?? [],
+          highlights: progressMap[c.bookId]?.highlights ?? [],
+          updatedAt: Date.parse(c.updatedAt) || Date.now(),
+        });
+      }
+
+      const shelfIds = uniqueIds([
+        ...(remote?.shelfIds ?? []),
+        ...get().shelfIds,
+      ]);
+      saveShelfIds(shelfIds);
+      set({
+        uploaded: [...localMap.values()],
+        shelfIds,
+        progressMap,
+        cloudUserId: userId,
+      });
+    } catch (error) {
+      console.warn("[library] cloud sync failed", error);
+    } finally {
+      set({ syncing: false });
     }
   },
 
@@ -140,6 +236,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const next = [bookId, ...ids];
     saveShelfIds(next);
     set({ shelfIds: next });
+    if (get().cloudUserId) {
+      void setShelfMembership({ data: { bookId, present: true } }).catch(
+        (e) => console.warn("[library] shelf sync failed", e),
+      );
+    }
   },
 
   removeFromShelf: async (bookId) => {
@@ -147,6 +248,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     saveShelfIds(next);
     const book = get().uploaded.find((b) => b.id === bookId);
     if (book) {
+      if (get().cloudUserId) {
+        try {
+          await deleteMyUploadedBook({ data: bookId });
+        } catch (error) {
+          console.warn("[library] cloud delete failed", error);
+        }
+      }
       if (book.storageKey) await deleteBookFile(book.storageKey);
       await idbDeleteBookMeta(bookId);
       set({
@@ -155,12 +263,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       });
     } else {
       set({ shelfIds: next });
+      if (get().cloudUserId) {
+        void setShelfMembership({ data: { bookId, present: false } }).catch(
+          (e) => console.warn("[library] shelf sync failed", e),
+        );
+      }
     }
   },
 
   isOnShelf: (bookId) => get().shelfIds.includes(bookId),
 
-  uploadBook: async (file, meta, onPhase) => {
+  uploadBook: async (file, meta, onPhase, ownerId) => {
     if (!meta?.personalUseAck) {
       throw new Error("请确认版权与个人使用声明");
     }
@@ -169,6 +282,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const parsed = await parseUploadedBook(file);
 
     const id = uid("upload");
+    const owner = ownerId?.trim() || "local-reader";
     const baseTitle =
       meta?.title?.trim() ||
       parsed.title ||
@@ -177,8 +291,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       meta?.author?.trim() || parsed.author || "我的上传";
 
     onPhase?.("storing");
-    const { key } = await putBookFile({
-      owner: OWNER,
+    const { key, backend } = await putBookFile({
+      owner,
       bookId: id,
       fileName: file.name,
       blob: file,
@@ -230,12 +344,52 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
     onPhase?.("indexing");
     await idbSaveBookMeta(id, book);
+
+    if (ownerId) {
+      try {
+        await saveUploadedBook({
+          data: {
+            id: book.id,
+            title: book.title,
+            author: book.author,
+            description: book.description,
+            coverColor: book.coverColor,
+            coverText: book.coverText,
+            category: book.category,
+            format: book.format,
+            tags: book.tags,
+            wordCount: book.wordCount,
+            storageKey: book.storageKey!,
+            fileName: book.fileName,
+            fileSize: book.fileSize,
+            pageCount: book.pageCount,
+            previewText: book.previewText,
+            createdAt: book.createdAt,
+            chapters:
+              book.format === "text"
+                ? book.chapters
+                : book.chapters?.map((c) => ({
+                    ...c,
+                    content: (c.content || "").slice(0, 500),
+                  })),
+            license: book.license,
+            licenseNote: book.licenseNote,
+          },
+        });
+      } catch (error) {
+        console.warn("[library] cloud metadata save failed", error);
+      }
+    }
+
     const shelfIds = [id, ...get().shelfIds.filter((x) => x !== id)];
     saveShelfIds(shelfIds);
     set({
       uploaded: [book, ...get().uploaded],
       shelfIds,
+      cloudUserId: ownerId || get().cloudUserId,
     });
+    // backend is used for toast in upload page via book fields if needed
+    void backend;
     return book;
   },
 
@@ -280,11 +434,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   allBooks: () => {
-    return [
-      ...get().uploaded,
-      ...get().community,
-      ...MARKET_BOOKS,
-    ];
+    return [...get().uploaded, ...get().community, ...MARKET_BOOKS];
   },
 
   shelfBooks: () => {

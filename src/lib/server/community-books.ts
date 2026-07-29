@@ -194,6 +194,9 @@ export const submitCommunityPdBook = createServerFn({ method: "POST" })
       data.wordCount ||
       chapters.reduce((n, c) => n + [...c.content].length, 0);
 
+    // Auto-approved with trust-and-report model (see copyright policy).
+    // Status column kept so a future moderation queue can demote rows.
+    const status = "approved";
     await sql`
       insert into community_pd_books (
         id, contributor_id, title, author, description, category, format,
@@ -213,7 +216,7 @@ export const submitCommunityPdBook = createServerFn({ method: "POST" })
         ${(data.pdBasisNote || "").trim().slice(0, 500)},
         ${(data.sourceUrl || "").trim().slice(0, 500)},
         ${(data.yearOrEra || "").trim().slice(0, 80)},
-        ${"approved"},
+        ${status},
         ${"社区公版 · 用户声明 · 可举报"},
         ${chaptersJson},
         ${wordCount}

@@ -150,6 +150,7 @@ export const runUserAi = createServerFn({ method: "POST" })
       on conflict (user_id) do nothing
     `;
 
+    let chargedOfficial = false;
     if (provider === "official") {
       const usage = await sql<{ count: number }>`
         select count from ai_usage_daily
@@ -162,12 +163,6 @@ export const runUserAi = createServerFn({ method: "POST" })
           `今日官方 AI 次数已用尽（${plan} 档 ${limit} 次）。可升级订阅或配置自有 API。`,
         );
       }
-      await sql`
-        insert into ai_usage_daily (user_id, day, count)
-        values (${context.userId}, ${day}::date, 1)
-        on conflict (user_id, day)
-        do update set count = ai_usage_daily.count + 1
-      `;
     }
 
     const meta = AI_PROVIDERS.find((p) => p.id === provider);
@@ -225,11 +220,22 @@ export const runUserAi = createServerFn({ method: "POST" })
       model: model || undefined,
     });
 
+    // Charge official quota only for non-local successful paths.
+    if (provider === "official" && result.via !== "local") {
+      await sql`
+        insert into ai_usage_daily (user_id, day, count)
+        values (${context.userId}, ${day}::date, 1)
+        on conflict (user_id, day)
+        do update set count = ai_usage_daily.count + 1
+      `;
+      chargedOfficial = true;
+    }
+
     const assistantMsgId = uid("m");
     let content = result.content;
     if (result.via === "local" && provider === "official") {
       content +=
-        "\n\n（官方通道：配置 Cloudflare Worker 或 CF AI 密钥后将使用云端模型；当前为本地伴读。）";
+        "\n\n（官方通道：配置 Cloudflare Worker 或 CF AI 密钥后将使用云端模型；当前为本地伴读，未消耗官方额度。）";
     } else if (result.via === "cf-worker") {
       content += `\n\n（Cloudflare Worker · ${result.model || "Workers AI"}）`;
     } else if (result.via === "pi") {
@@ -252,13 +258,20 @@ export const runUserAi = createServerFn({ method: "POST" })
       where id = ${conversationId}
     `;
 
-    const storageKey = await archiveConversation(sql, {
-      userId: context.userId,
-      conversationId,
-      bookId: data.bookId,
-      title: titleSeed,
-      engine: `${result.via}:${result.provider}`,
-    });
+    let storageKey: string | null = null;
+    try {
+      storageKey = await archiveConversation(sql, {
+        userId: context.userId,
+        conversationId,
+        bookId: data.bookId,
+        title: titleSeed,
+        engine: `${result.via}:${result.provider}`,
+      });
+    } catch (error) {
+      // DB messages already persisted; archive is best-effort.
+      console.warn("[ai-chat] archive failed", error);
+      storageKey = `ai-chats/${context.userId}/${data.bookId}/${conversationId}.json`;
+    }
 
     const remaining =
       provider === "official"
@@ -282,6 +295,7 @@ export const runUserAi = createServerFn({ method: "POST" })
       conversationId,
       storageKey,
       remaining,
+      chargedOfficial,
       userMessageId: userMsgId,
       assistantMessageId: assistantMsgId,
     };

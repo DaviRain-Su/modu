@@ -8,6 +8,7 @@ import {
 import { Toaster } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthProvider } from "@/lib/auth/provider";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { AppThemeProvider, useAppTheme } from "@/lib/theme/app-theme";
 import { useLibraryStore } from "@/lib/store/library";
 import appCss from "../styles.css?url";
@@ -51,13 +52,24 @@ function ThemedToaster() {
   );
 }
 
-function RootComponent() {
+function LibraryBootstrap() {
   const init = useLibraryStore((s) => s.init);
+  const syncFromCloud = useLibraryStore((s) => s.syncFromCloud);
+  const { user, isPending } = useCurrentUserState();
 
   useEffect(() => {
     void init();
   }, [init]);
 
+  useEffect(() => {
+    if (isPending) return;
+    void syncFromCloud(user?.id ?? null);
+  }, [isPending, syncFromCloud, user?.id]);
+
+  return null;
+}
+
+function RootComponent() {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
@@ -67,6 +79,7 @@ function RootComponent() {
       <body>
         <AppThemeProvider>
           <AuthProvider>
+            <LibraryBootstrap />
             <AppShell>
               <Outlet />
             </AppShell>
