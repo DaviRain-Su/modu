@@ -8,6 +8,7 @@ import {
   type PublicProfile,
 } from "@/lib/server/profile";
 import { MARKET_BOOKS } from "@/lib/books/catalog";
+import { publicBookLabel } from "@/lib/books/copyright";
 import { useLibraryStore } from "@/lib/store/library";
 
 export const Route = createFileRoute("/u/$userId")({
@@ -40,7 +41,16 @@ function ProfilePage() {
       ]);
       if (cancelled) return;
       setProfile(p);
-      setNotes(a);
+      // 私有书：主页只展示有 note 的条目，并去掉 quote
+      setNotes(
+        a.map((n) => {
+          const label = publicBookLabel(n.book_id);
+          if (label.isPrivate) {
+            return { ...n, quote: "" };
+          }
+          return n;
+        }),
+      );
     })().catch(() => {
       if (!cancelled) setProfile(null);
     });
@@ -93,7 +103,12 @@ function ProfilePage() {
       </div>
 
       <section>
-        <h2 className="mb-3 text-sm font-medium text-fg-muted">公开批注</h2>
+        <h2 className="mb-3 text-sm font-medium text-fg-muted">
+          公开批注 · 摘要
+        </h2>
+        <p className="mb-3 text-xs text-fg-subtle">
+          私有图书只显示读者自己的评论，不展示书名与原文。
+        </p>
         {notes.length === 0 ? (
           <p className="rounded-[var(--radius-xl)] border border-dashed border-border py-10 text-center text-sm text-fg-muted">
             暂无公开内容
@@ -101,24 +116,35 @@ function ProfilePage() {
         ) : (
           <div className="space-y-3">
             {notes.map((n) => {
-              const book =
+              const label = publicBookLabel(
+                n.book_id,
                 getBook(n.book_id) ??
-                MARKET_BOOKS.find((b) => b.id === n.book_id);
+                  MARKET_BOOKS.find((b) => b.id === n.book_id),
+              );
               return (
                 <div
                   key={n.id}
                   className="rounded-[var(--radius-xl)] border border-border bg-bg-elevated p-4"
                 >
-                  <Link
-                    to="/book/$bookId"
-                    params={{ bookId: n.book_id }}
-                    className="text-xs text-fg-subtle hover:text-fg"
-                  >
-                    {book?.title ?? n.book_id}
-                  </Link>
-                  <blockquote className="mt-2 border-l-2 border-accent/40 pl-3 text-sm text-fg-muted">
-                    {n.quote}
-                  </blockquote>
+                  {label.linkable ? (
+                    <Link
+                      to="/book/$bookId"
+                      params={{ bookId: n.book_id }}
+                      className="text-xs text-fg-subtle hover:text-fg"
+                    >
+                      {label.title}
+                    </Link>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-xs text-fg-subtle">
+                      {label.title}
+                      <Badge variant="outline">私密</Badge>
+                    </span>
+                  )}
+                  {n.quote ? (
+                    <blockquote className="mt-2 border-l-2 border-accent/40 pl-3 text-sm text-fg-muted">
+                      {n.quote}
+                    </blockquote>
+                  ) : null}
                   {n.note && (
                     <p className="mt-2 text-sm leading-relaxed">{n.note}</p>
                   )}

@@ -41,19 +41,30 @@ export function BookCard({
             <Star className="h-3 w-3 fill-accent/80 text-accent" />
             {book.rating.toFixed(1)}
           </span>
-          <span>{formatCount(book.readers)} 人在读</span>
+          {book.visibility === "public_domain" ? (
+            <span>{formatCount(book.readers)} 人在读</span>
+          ) : (
+            <span>仅自己可见</span>
+          )}
         </div>
-        {showProgress && typeof book.progress === "number" && book.progress > 0 && (
-          <div className="mt-2 space-y-1">
-            <Progress value={book.progress} />
-            <p className="text-[11px] text-fg-subtle">已读 {Math.round(book.progress)}%</p>
-          </div>
-        )}
-        {book.source === "upload" && (
-          <Badge className="mt-2" variant="accent">
-            我的上传
-          </Badge>
-        )}
+        {showProgress &&
+          typeof book.progress === "number" &&
+          book.progress > 0 && (
+            <div className="mt-2 space-y-1">
+              <Progress value={book.progress} />
+              <p className="text-[11px] text-fg-subtle">
+                已读 {Math.round(book.progress)}%
+              </p>
+            </div>
+          )}
+        <div className="mt-2 flex flex-wrap gap-1">
+          {book.visibility === "public_domain" && (
+            <Badge variant="outline">公版</Badge>
+          )}
+          {book.source === "upload" && (
+            <Badge variant="accent">私有上传</Badge>
+          )}
+        </div>
       </div>
     </Link>
   );
@@ -73,16 +84,24 @@ export function BookRow({ book }: { book: Book }) {
             <h3 className="font-medium tracking-tight">{book.title}</h3>
             <p className="mt-0.5 text-sm text-fg-muted">{book.author}</p>
           </div>
-          <Badge variant="outline">{book.category}</Badge>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <Badge variant="outline">{book.category}</Badge>
+            {book.visibility === "public_domain" ? (
+              <Badge variant="accent">公版</Badge>
+            ) : (
+              <Badge>私有</Badge>
+            )}
+          </div>
         </div>
-        <p className="mt-2 line-clamp-2 text-sm text-fg-subtle">{book.description}</p>
+        <p className="mt-2 line-clamp-2 text-sm text-fg-subtle">
+          {book.description}
+        </p>
         <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-fg-subtle">
           <span className="inline-flex items-center gap-1">
             <Star className="h-3 w-3 fill-accent/80 text-accent" />
             {book.rating.toFixed(1)}
           </span>
-          <span>{formatCount(book.readers)} 人在读</span>
-          <span className="uppercase">{book.format}</span>
+          <span>{book.license}</span>
         </div>
       </div>
     </Link>

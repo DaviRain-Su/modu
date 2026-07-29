@@ -1,3 +1,12 @@
+/**
+ * 书城目录 —— **仅公版（Public Domain）图书**
+ *
+ * 收录原则：
+ * - 作者去世已超过版权保护期，或本身属于公共领域的作品
+ * - 正文使用公版原文节选（便于在线试读），非当代受版权保护文本
+ * - 禁止上架有版权争议的现当代商业出版物
+ */
+
 import type { Book, Chapter } from "./types";
 
 function ch(id: string, title: string, paragraphs: string[]): Chapter {
@@ -8,288 +17,260 @@ function ch(id: string, title: string, paragraphs: string[]): Chapter {
   };
 }
 
-const book1Chapters: Chapter[] = [
-  ch("b1c1", "第一章 · 清晨的光", [
-    "城市还没有完全醒来。电梯井里回荡着细微的机械声，像某种遥远的呼吸。林屿站在二十三层的落地窗前，手里端着一杯微温的水，看着对面楼顶渐渐被日光染成琥珀色。",
-    "他想起导师说过的话：阅读与生活，本质上是同一种注意力训练——你选择把目光放在哪里，世界就在哪里展开。昨晚读到的那本小书还摊在床头，书签停在「意义并非被发现，而是被一次次选择」那一行。",
-    "手机震动了一下。是一条系统通知：墨读 · 今日推荐已更新。他没有立刻点开，而是先把窗帘拉开一半，让空气带着尘埃的光粒涌进来。有些早晨适合被打断，有些早晨适合被完整地保留。",
-    "他决定把今天的第一个小时留给纸页。不是因为任务清单上有「阅读」这一项，而是因为他知道：如果不先把自己安放好，后面所有的效率都会变成噪声。",
-  ]),
-  ch("b1c2", "第二章 · 书店与陌生人", [
-    "周末的独立书店总是拥挤而安静。人们用目光交换礼貌，却很少用声音。林屿在社科区的角落找到一把空椅子，坐下时，邻座的女孩正把一页页笔记誊到手账里，字迹细密，像地图上的等高线。",
-    "「你也在找那本讲城市记忆的书吗？」她忽然问，眼睛没有离开纸面。",
-    "「或许是。」他笑了笑，「或者我只是在找一个可以坐下来的理由。」",
-    "他们交换了书单。有些书像路口，把两个陌生人暂时编进同一段叙事。走出书店时，天色已暗，橱窗灯把街道照成一条温暖的河。林屿把新买的书放进帆布袋，听见纸页互相摩擦的细响——那是一种他愿意为之放慢脚步的声音。",
-  ]),
-  ch("b1c3", "第三章 · 深夜算法", [
-    "算法知道他喜欢什么：长句、留白、偶尔的冷幽默。推荐列表像一面镜子，映出他尚未说出口的偏好。林屿有时会故意点开一本完全陌生领域的书，只为了把镜子打碎一点。",
-    "「个性化」这个词听起来体贴，也可能是一种温柔的囚禁。他在笔记里写：真正的阅读自由，是保留被偶然击中的权利。",
-    "窗外的广告牌循环播放着同一支短视频。他关掉手机，翻开实体书。油墨的气味比屏幕的光更接近睡眠。某一段关于「注意力经济」的论述让他停下来，用铅笔在页边画了一条细线——不是为了以后复习，而是为了此刻确认：我在这里，我读到了。",
-  ]),
-];
+const PD = {
+  visibility: "public_domain" as const,
+  source: "market" as const,
+  format: "text" as const,
+  license: "公版 · Public Domain",
+};
 
-const book2Chapters: Chapter[] = [
-  ch("b2c1", "序章 · 为什么我们需要故事", [
-    "人类并不是先学会写作，才开始讲故事的。故事比文字古老，比城市古老，甚至比农业古老。围着火堆的人群用叙事把恐惧变成可传递的知识，把孤独变成共享的节律。",
-    "认知科学后来给出了一个冷静的解释：大脑偏好因果链。一个有开头、转折与收束的序列，比零散事实更容易被编码进长期记忆。于是故事成为压缩世界的算法——在文字出现之前就已经运行。",
-    "但故事的危险与力量同源：它不仅可以解释世界，也可以改造我们看见世界的方式。宣传、广告、乃至某些「成功学」，都是高水平的叙事工程。",
-  ]),
-  ch("b2c2", "第一章 · 情节的骨架", [
-    "最基础的情节骨架并不神秘：欲望、阻碍、选择、代价。角色想要某物，世界不同意，他必须行动，而行动总会留下伤疤或礼物。",
-    "业余作者常犯的错误是让角色「路过」事件，而不是被事件改写。好的情节不是事件清单，而是压力测试：在极限情境下，人物露出平时藏起来的真实纹理。",
-    "你可以做一个练习：写下一个角色最珍视的三样东西，然后设计一个场景，迫使他只能保住一样。情节会从这个残酷的算术里自己生长出来。",
-  ]),
-  ch("b2c3", "第二章 · 声音与距离", [
-    "叙事声音决定读者与故事的距离。全知像站在山脊上看河谷；第一人称像把耳朵贴在角色的肋骨上。没有绝对更好的选择，只有是否匹配主题。",
-    "有些故事需要冷——让读者自己完成道德判断；有些故事需要热——让情感先于分析抵达。控制距离，本质上是控制信任：你让读者知道多少，何时知道，以及知道之后还能不能回头。",
-  ]),
-];
-
-const book3Chapters: Chapter[] = [
-  ch("b3c1", "第一讲 · 时间不是匀速的", [
-    "物理时间均匀流逝，心理时间却像橡皮筋。等待时它拉长，沉浸时它折叠。正念并不否认时间的流逝，而是改变我们与流逝相处的姿态。",
-    "试着做一个两分钟的练习：把注意力放在呼吸进出鼻尖的感觉上。当思绪飘走——它一定会飘走——温和地标记「想」，然后回来。这个「回来」的动作，比任何一次完美的专注更重要。",
-    "现代生活鼓励我们把每一分钟货币化。阅读、散步、发呆因此显得「低效」。但正是这些无法被完全量化的间隙，维持着心智的弹性。",
-  ]),
-  ch("b3c2", "第二讲 · 身体是入口", [
-    "情绪很少只住在头脑里。肩膀的紧、胃部的沉、下巴的咬合——身体先于语言知道发生了什么。觉察练习的第一步，不是分析情绪的原因，而是允许身体信号被注意到。",
-    "找一个安静的位置坐下，从脚底扫描到头顶。不评判「紧」或「松」的好坏，只是命名：温热、刺痛、空虚、流动。命名会制造一点点空间，空间里选择才可能出现。",
-  ]),
-  ch("b3c3", "第三讲 · 与不完美共存", [
-    "许多人把正念误解为清空念头或永远平静。那是另一个苛刻的理想。更贴近生活的版本是：在混乱中仍能认出自己，在失败后仍愿重新开始。",
-    "把「今天我做得不够好」改写成「今天我注意到了不够好的感觉」。前者关闭学习，后者打开学习。阅读也是如此——读不懂的段落不是敌人，是邀请你放慢、重读、提问的信号。",
-  ]),
-];
-
-const book4Chapters: Chapter[] = [
-  ch("b4c1", "开篇 · 云上的图书馆", [
-    "公元 2147 年，地球同步轨道上漂浮着一座名为「阿斯特拉」的图书馆站。它不收藏纸书，而收藏「完整的阅读体验」：作者写作时的脑波残影、初版装帧的触觉模拟、以及千万读者在页边留下的高亮与争论。",
-    "管理员苏晴的工作是清理失控的叙事虫——一种会篡改结局的信息寄生程序。今天，一份来自火星殖民地的紧急请求让她皱起眉：有人在《最后的纸页》里植入了会改写读者记忆的章节。",
-  ]),
-  ch("b4c2", "第二章 · 被改写的结局", [
-    "苏晴戴上神经接口，沉入书中。她看见的不是文字，而是一座不断重组的城市：街道按读者的偏见生长，桥梁在争论最激烈处断裂。一个穿旧风衣的身影在街角向她点头——那是原作者的残影。",
-    "「有人在偷走疑问。」残影说，「当读者不再问『为什么这样写』，故事就死了。」苏晴握紧虚拟手电，光柱里浮现出一行被篡改的代码：`if (attention < threshold) rewrite(memory)`。",
-  ]),
-  ch("b4c3", "第三章 · 把疑问还回去", [
-    "对抗叙事虫的方法不是删除，而是恢复「可争议性」。苏晴在关键节点插入开放式注解，让每个结局都保留分叉。读者重新获得选择：相信、怀疑、或写下自己的第三种可能。",
-    "图书馆站的灯光稳定下来。苏晴退出接口，对着舷窗外的地球轻声说：「阅读不是接收，是共同编辑现实。」通讯器闪烁——火星发来致谢，并附上一部全新的、尚未被任何人读完的手稿。",
-  ]),
-];
-
-const book5Chapters: Chapter[] = [
-  ch("b5c1", "导论 · 复利与注意力", [
-    "大多数人熟悉金钱的复利，却忽略注意力的复利。你持续关注的事物，会以非线性的方式改变你的技能、关系与机会结构。投资自己的第一原则不是「更努力」，而是「更长久地站在正确的输入旁边」。",
-    "好的阅读系统具备三个特征：可检索（你能找到读过的观点）、可连接（新旧知识互相链接）、可行动（能转化为下一次决策）。没有行动闭环的阅读，只是高级娱乐。",
-  ]),
-  ch("b5c2", "第一章 · 选择你的书架", [
-    "书架是价值观的外化。公开你的书架，几乎等于公开你相信什么值得占用生命。定期清理：那本买了三年未拆封的畅销书，或许在提醒你——冲动购买与真实兴趣之间仍有距离。",
-    "建立「核心 30 本」：反复重读的书，比不断追新更能形成思维骨架。新书负责扩展边界，旧书负责加固地基。",
-  ]),
-  ch("b5c3", "第二章 · 输出倒逼输入", [
-    "写笔记、讲给别人听、做决策备忘——这些输出行为会倒逼你在阅读时提高精度。AI 伴读可以加速解释与摘要，但替代不了你亲自完成的那一次「用自己的话重说」。",
-    "试着每读完一章，只写三行：一事实、一感受、一行动。坚持三十天，你会得到一份比任何书单更私人的成长地图。",
-  ]),
-];
-
-const book6Chapters: Chapter[] = [
-  ch("b6c1", "上篇 · 街道的文法", [
-    "一座城市的可读性，取决于街道是否允许「意外的相遇」。宽阔却荒芜的快速路提高了车速，却降低了故事密度。雅各布斯所说的「街道眼」，本质是一种分布式的互相关照。",
-    "步行友好的街区像一本好的散文集：段落有节奏，转折自然，偶尔的店铺像精彩的句子，让你愿意停留。",
-  ]),
-  ch("b6c2", "中篇 · 公共空间的温度", [
-    "公园、图书馆、菜市场——这些空间的价值无法完全用租金模型衡量。它们生产的是弱连接与安全感。当城市把所有缝隙都商品化，阅读与闲逛会一起消失。",
-    "规划者需要为「无目的性」辩护：不是所有停留都要转化成消费。有时，人只是需要一个不被催促的角落。",
-  ]),
-  ch("b6c3", "下篇 · 数字城市与身体", [
-    "导航软件让我们不再迷路，也让我们不再真正认识路。身体记忆被坐标替代后，城市从「可居住的地方」退化成「可穿越的图层」。",
-    "对抗方式很简单：每周留一次无目的散步，关掉推荐路线，让嗅觉与风向重新参与定位。像读一本没有目录的书那样读你的城市。",
-  ]),
-];
-
+/** 书城公版书目 */
 export const MARKET_BOOKS: Book[] = [
   {
-    id: "market_morning_light",
-    title: "清晨的阅读方法",
-    author: "林屿",
+    id: "pd_lunyu",
+    title: "论语（节选）",
+    author: "孔子及其弟子",
     description:
-      "一部关于注意力、书店与当代生活的散文集。用缓慢的笔触记录城市晨光，探讨在算法时代如何保住被偶然击中的权利。",
-    coverColor: "#2c3338",
-    coverText: "清晨",
-    category: "文学",
-    format: "text",
-    source: "market",
-    tags: ["散文", "生活", "注意力"],
-    rating: 4.8,
-    readers: 128400,
-    wordCount: 86000,
-    chapters: book1Chapters,
-    createdAt: Date.UTC(2025, 2, 12),
-  },
-  {
-    id: "market_story_engine",
-    title: "故事引擎",
-    author: "陈昭",
-    description:
-      "从认知科学到创作工作坊，拆解叙事的骨架、声音与距离。适合想把想法写成让人读完的人。",
-    coverColor: "#3d2f28",
-    coverText: "故事",
-    category: "社科",
-    format: "text",
-    source: "market",
-    tags: ["写作", "叙事", "创作"],
-    rating: 4.6,
-    readers: 89200,
-    wordCount: 102000,
-    chapters: book2Chapters,
-    createdAt: Date.UTC(2025, 5, 3),
-  },
-  {
-    id: "market_mindful_minutes",
-    title: "正念十分钟",
-    author: "周念",
-    description:
-      "不神秘、不苛求完美的正念入门。把呼吸、身体扫描与不完美共存写进日常，让阅读本身成为练习。",
-    coverColor: "#1e3a32",
-    coverText: "正念",
-    category: "生活",
-    format: "text",
-    source: "market",
-    tags: ["心理", "习惯", "健康"],
-    rating: 4.7,
-    readers: 210500,
-    wordCount: 54000,
-    chapters: book3Chapters,
-    createdAt: Date.UTC(2024, 10, 20),
-  },
-  {
-    id: "market_astra_lib",
-    title: "阿斯特拉图书馆",
-    author: "苏晴 / 纪年",
-    description:
-      "轨道上的图书馆站、会改写记忆的叙事虫、把疑问还给读者的科幻中篇。关于阅读自由的寓言。",
-    coverColor: "#1a2744",
-    coverText: "星图",
-    category: "幻想",
-    format: "text",
-    source: "market",
-    tags: ["科幻", "图书馆", "未来"],
+      "儒家核心经典。收录学而、为政等篇章节选。成书于先秦，属公共领域，可自由阅读与传播。",
+    coverColor: "#2c241c",
+    coverText: "论语",
+    category: "历史",
+    ...PD,
+    licenseNote: "先秦文献 · 公版",
+    tags: ["公版", "国学", "儒家"],
     rating: 4.9,
-    readers: 156800,
-    wordCount: 72000,
-    chapters: book4Chapters,
-    createdAt: Date.UTC(2026, 0, 8),
-  },
-  {
-    id: "market_attention_compound",
-    title: "注意力复利",
-    author: "韩舟",
-    description:
-      "把投资思维迁移到知识管理：选择书架、输出倒逼输入、用系统让阅读产生长期回报。",
-    coverColor: "#2a2a20",
-    coverText: "复利",
-    category: "商业",
-    format: "text",
-    source: "market",
-    tags: ["效率", "成长", "知识管理"],
-    rating: 4.5,
-    readers: 178300,
-    wordCount: 91000,
-    chapters: book5Chapters,
-    createdAt: Date.UTC(2025, 8, 15),
-  },
-  {
-    id: "market_city_grammar",
-    title: "街道的文法",
-    author: "沈桥",
-    description:
-      "从步行街区到数字导航，讨论公共空间的温度与身体记忆。一部写给城市规划者与普通散步者的书。",
-    coverColor: "#3a2a32",
-    coverText: "街道",
-    category: "历史",
-    format: "text",
-    source: "market",
-    tags: ["城市", "空间", "社会"],
-    rating: 4.4,
-    readers: 64300,
-    wordCount: 118000,
-    chapters: book6Chapters,
-    createdAt: Date.UTC(2024, 6, 1),
-  },
-  {
-    id: "market_code_poetry",
-    title: "代码与诗",
-    author: "叶维",
-    description:
-      "程序员视角的文学随笔：抽象、重构、注释与留白如何同时出现在编辑器与诗行里。",
-    coverColor: "#243038",
-    coverText: "代码",
-    category: "科技",
-    format: "text",
-    source: "market",
-    tags: ["技术", "诗", "跨界"],
-    rating: 4.6,
-    readers: 52100,
-    wordCount: 67000,
+    readers: 520000,
+    wordCount: 18000,
     chapters: [
-      ch("b7c1", "第一章 · 缩进的美学", [
-        "好的代码像好的诗：删除一切不必要的词，却保留呼吸。缩进不只是语法要求，它是视觉上的节奏——读者（或编译器）顺着空白滑入意义的深处。",
-        "我常在 code review 里写同一句话：如果这段逻辑需要三段注释才能被理解，也许它还没有找到自己的名字。命名是最小的诗学。",
+      ch("ly1", "学而第一（节选）", [
+        "子曰：「学而时习之，不亦说乎？有朋自远方来，不亦乐乎？人不知而不愠，不亦君子乎？」",
+        "曾子曰：「吾日三省吾身：为人谋而不忠乎？与朋友交而不信乎？传不习乎？」",
+        "子曰：「弟子入则孝，出则弟，谨而信，泛爱众，而亲仁。行有余力，则以学文。」",
       ]),
-      ch("b7c2", "第二章 · 异常与隐喻", [
-        "异常处理是程序的转折点，隐喻是语言的转折点。两者都在说：世界不按你假设的路径前进时，你准备好如何优雅地失败了吗？",
-        "优雅的失败不是掩饰错误，而是把错误变成可观测、可恢复、可讲述的事件。",
+      ch("ly2", "为政第二（节选）", [
+        "子曰：「为政以德，譬如北辰，居其所而众星共之。」",
+        "子曰：「学而不思则罔，思而不学则殆。」",
+        "子曰：「由！诲女知之乎？知之为知之，不知为不知，是知也。」",
       ]),
-      ch("b7c3", "第三章 · 开源的共同体", [
-        "开源仓库是一种现代的公共图书馆：贡献者留下补丁，像读者留下旁注。维护者的工作类似馆员——分类、保护、偶尔对无理取闹说不。",
-        "在 pull request 的讨论里，我看见过最动人的句子：「我改了这里，因为我曾经被同样的 bug 伤害。」技术文档因此有了体温。",
+      ch("ly3", "里仁第四（节选）", [
+        "子曰：「里仁为美。择不处仁，焉得知？」",
+        "子曰：「朝闻道，夕死可矣。」",
+        "子曰：「见贤思齐焉，见不贤而内自省也。」",
       ]),
     ],
-    createdAt: Date.UTC(2025, 11, 2),
+    createdAt: Date.UTC(2020, 0, 1),
   },
   {
-    id: "market_silk_road_notes",
-    title: "丝路笔记",
-    author: "阿丽耶",
+    id: "pd_daodejing",
+    title: "道德经（节选）",
+    author: "老子",
     description:
-      "沿着古道与新铁路重走贸易与文化的交汇点。历史不是年表，是人群在干旱与绿洲之间学会交换的故事。",
-    coverColor: "#3b2f1e",
-    coverText: "丝路",
-    category: "历史",
-    format: "text",
-    source: "market",
-    tags: ["旅行", "文明", "贸易"],
+      "道家思想源头。选录开篇与修身相关章节。古代文献，公共领域。",
+    coverColor: "#1e2f28",
+    coverText: "道德",
+    category: "社科",
+    ...PD,
+    licenseNote: "先秦文献 · 公版",
+    tags: ["公版", "道家", "哲学"],
+    rating: 4.8,
+    readers: 410000,
+    wordCount: 12000,
+    chapters: [
+      ch("ddj1", "第一章", [
+        "道可道，非常道。名可名，非常名。无名天地之始；有名万物之母。",
+        "故常无欲，以观其妙；常有欲，以观其徼。此两者，同出而异名，同谓之玄。玄之又玄，众妙之门。",
+      ]),
+      ch("ddj2", "第八章", [
+        "上善若水。水善利万物而不争，处众人之所恶，故几于道。",
+        "居善地，心善渊，与善仁，言善信，正善治，事善能，动善时。夫唯不争，故无尤。",
+      ]),
+      ch("ddj3", "第三十三章", [
+        "知人者智，自知者明。胜人者有力，自胜者强。知足者富。强行者有志。不失其所者久。死而不亡者寿。",
+      ]),
+    ],
+    createdAt: Date.UTC(2020, 0, 2),
+  },
+  {
+    id: "pd_tangshi300",
+    title: "唐诗三百首（选）",
+    author: "蘅塘退士 编 · 诸家",
+    description:
+      "清代蘅塘退士编选的唐诗启蒙读本中的名篇。原作唐代诗歌，均已进入公共领域。",
+    coverColor: "#3a2820",
+    coverText: "唐诗",
+    category: "文学",
+    ...PD,
+    licenseNote: "唐代诗歌 · 公版",
+    tags: ["公版", "诗词", "古典"],
+    rating: 4.9,
+    readers: 680000,
+    wordCount: 25000,
+    chapters: [
+      ch("ts1", "静夜思 · 李白", [
+        "床前明月光，疑是地上霜。",
+        "举头望明月，低头思故乡。",
+      ]),
+      ch("ts2", "春晓 · 孟浩然", [
+        "春眠不觉晓，处处闻啼鸟。",
+        "夜来风雨声，花落知多少。",
+      ]),
+      ch("ts3", "登鹳雀楼 · 王之涣", [
+        "白日依山尽，黄河入海流。",
+        "欲穷千里目，更上一层楼。",
+      ]),
+      ch("ts4", "黄鹤楼送孟浩然之广陵 · 李白", [
+        "故人西辞黄鹤楼，烟花三月下扬州。",
+        "孤帆远影碧空尽，唯见长江天际流。",
+      ]),
+    ],
+    createdAt: Date.UTC(2020, 0, 3),
+  },
+  {
+    id: "pd_xiyouji",
+    title: "西游记（第一回节选）",
+    author: "吴承恩",
+    description:
+      "明代神魔小说开篇：花果山、石猴出世。原著属公共领域；此处为开篇节选供在线阅读。",
+    coverColor: "#2a1e38",
+    coverText: "西游",
+    category: "幻想",
+    ...PD,
+    licenseNote: "明代小说 · 公版",
+    tags: ["公版", "古典小说", "神魔"],
+    rating: 4.8,
+    readers: 890000,
+    wordCount: 8000,
+    chapters: [
+      ch("xyj1", "第一回 · 灵根育孕源流出（节选）", [
+        "诗曰：混沌未分天地乱，茫茫渺渺无人见。自从盘古破鸿蒙，开辟从兹清浊辨。",
+        "盖闻天地之数，有十二万九千六百岁为一元。将一元分为十二会……",
+        "那座山正当顶上，有一块仙石。其石有三丈六尺五寸高，有二丈四尺围圆。内育仙胞，一日迸裂，产一石卵，似圆球样大。因见风，化作一个石猴。",
+        "那猴在山中，却会行走跳跃，食草木，饮涧泉，采山花，觅树果；与狼虫为伴，虎豹为群，獐鹿为友，猕猿为亲；夜宿石崖之下，朝游峰洞之中。",
+      ]),
+    ],
+    createdAt: Date.UTC(2020, 0, 4),
+  },
+  {
+    id: "pd_hongloumeng",
+    title: "红楼梦（第一回节选）",
+    author: "曹雪芹",
+    description:
+      "古典名著开篇「甄士隐梦幻识通灵」。原著公共领域；节选仅供公版阅读体验。",
+    coverColor: "#3d2430",
+    coverText: "红楼",
+    category: "文学",
+    ...PD,
+    licenseNote: "清代小说 · 公版",
+    tags: ["公版", "古典小说", "红楼"],
+    rating: 4.9,
+    readers: 920000,
+    wordCount: 9000,
+    chapters: [
+      ch("hlm1", "第一回 · 甄士隐梦幻识通灵（节选）", [
+        "此开卷第一回也。作者自云：因曾历过一番梦幻之后，故将真事隐去，而借「通灵」之说，撰此《石头记》一书也。",
+        "列位看官：你道此书从何而来？说起根由虽近荒唐，细按则深有趣味。待在下将此来历注明，方使阅者了然不惑。",
+        "原来女娲氏炼石补天之时，于大荒山无稽崖练成高经十二丈、方经二十四丈顽石三万六千五百零一块。娲皇氏只用了三万六千五百块，只单单剩了一块未用，便弃在此山青埂峰下。",
+      ]),
+    ],
+    createdAt: Date.UTC(2020, 0, 5),
+  },
+  {
+    id: "pd_luxun_nahan",
+    title: "呐喊 · 自序（节选）",
+    author: "鲁迅",
+    description:
+      "鲁迅《呐喊》自序名段。作者 1936 年逝世，依多数法域已进入公共领域；收录经典段落供公版阅读。",
+    coverColor: "#1c1c1c",
+    coverText: "呐喊",
+    category: "文学",
+    ...PD,
+    licenseNote: "现代文学经典 · 公版（作者去世已逾保护期）",
+    tags: ["公版", "鲁迅", "现代文学"],
+    rating: 4.9,
+    readers: 750000,
+    wordCount: 6000,
+    chapters: [
+      ch("lx1", "自序（节选）", [
+        "我在年青时候也曾经做过许多梦，后来大半忘却了，但自己也并不以为可惜。所谓回忆者，虽说可以使人欢欣，有时也不免使人寂寞，使精神的丝缕还牵着已逝的寂寞的时光，又有什么意味呢，而我偏苦于不能全忘却，这不能全忘的一部分，到现在便成了《呐喊》的来由。",
+        "有谁从小康人家而坠入困顿的么，我以为在这途路中，大概可以看见世人的真面目；我要到 N 进 K 学堂去了，仿佛是想走异路，逃异地，去寻求别样的人们。",
+        "假如一间铁屋子，是绝无窗户而万难破毁的，里面有许多熟睡的人们，不久都要闷死了，然而是从昏睡入死灭，并不感到就死的悲哀。现在你大嚷起来，惊起了较为清醒的几个人，使这不幸的少数者来受无可挽救的临终的苦楚，你倒以为对得起他们么？",
+      ]),
+    ],
+    createdAt: Date.UTC(2020, 0, 6),
+  },
+  {
+    id: "pd_alice",
+    title: "Alice’s Adventures in Wonderland（excerpt）",
+    author: "Lewis Carroll",
+    description:
+      "1865 English classic. Public domain worldwide. Opening chapters for bilingual reading practice.",
+    coverColor: "#1a3040",
+    coverText: "Alice",
+    category: "幻想",
+    ...PD,
+    licenseNote: "Project Gutenberg · Public Domain",
+    tags: ["公版", "English", "经典"],
     rating: 4.7,
-    readers: 98400,
-    wordCount: 134000,
+    readers: 1200000,
+    wordCount: 15000,
     chapters: [
-      ch("b8c1", "第一站 · 绿洲", [
-        "绿洲不是地图上的点，是水与人谈判后的结果。商队在这里休整，语言在这里混血，香料的气味盖过了旅途的尘土。",
-        "我在旅店的账本边缘看见几种文字并排书写——记账本身就是最早的翻译实践。",
+      ch("alice1", "Chapter I · Down the Rabbit-Hole (excerpt)", [
+        "Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, “and what is the use of a book,” thought Alice “without pictures or conversations?”",
+        "So she was considering in her own mind (as well as she could, for the hot day made her feel very sleepy and stupid), whether the pleasure of making a daisy-chain would be worth the trouble of getting up and picking the daisies, when suddenly a White Rabbit with pink eyes ran close by her.",
       ]),
-      ch("b8c2", "第二站 · 关隘", [
-        "关隘收取的不只是税，还有故事的通行权。哪些货物可以过，哪些信仰必须低调，都写在关吏的眼色里。",
-        "历史书喜欢写王朝更迭，却少写那些在关隘排队三天的普通人。他们的等待，构成了文明的毛细血管。",
-      ]),
-      ch("b8c3", "第三站 · 新轨道", [
-        "铁轨铺到旧商道旁边时，时间被重新定价。集装箱替代骆驼，但人们对远方的好奇没有被替代。",
-        "我在高铁窗外看见戈壁，忽然明白：速度改变了景观的分辨率，却改变不了人类想把远方读进自己生命的冲动。",
+      ch("alice2", "Chapter II · The Pool of Tears (excerpt)", [
+        "“Curiouser and curiouser!” cried Alice (she was so much surprised, that for the moment she quite forgot how to speak good English); “now I’m opening out like the largest telescope that ever was! Good-bye, feet!”",
       ]),
     ],
-    createdAt: Date.UTC(2023, 3, 18),
+    createdAt: Date.UTC(2020, 0, 7),
+  },
+  {
+    id: "pd_pride",
+    title: "Pride and Prejudice（excerpt）",
+    author: "Jane Austen",
+    description:
+      "1813 English novel. Public domain. Famous opening and early dialogue for classic reading.",
+    coverColor: "#3a2a28",
+    coverText: "Pride",
+    category: "文学",
+    ...PD,
+    licenseNote: "Project Gutenberg · Public Domain",
+    tags: ["公版", "English", "小说"],
+    rating: 4.8,
+    readers: 980000,
+    wordCount: 12000,
+    chapters: [
+      ch("pp1", "Chapter 1 (excerpt)", [
+        "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.",
+        "However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters.",
+      ]),
+    ],
+    createdAt: Date.UTC(2020, 0, 8),
   },
 ];
 
-export const CATEGORIES: Array<Book["category"] | "全部"> = [
+export const CATEGORIES = [
   "全部",
   "文学",
   "社科",
-  "科技",
   "历史",
-  "商业",
-  "生活",
   "幻想",
-];
+  "生活",
+  "科技",
+  "商业",
+] as const;
+
+export function isMarketBookId(id: string): boolean {
+  return MARKET_BOOKS.some((b) => b.id === id);
+}
 
 export function getMarketBook(id: string): Book | undefined {
   return MARKET_BOOKS.find((b) => b.id === id);
+}
+
+/** 书城公开列表 —— 仅公版 */
+export function listMarketBooks(): Book[] {
+  return MARKET_BOOKS.filter(
+    (b) => b.visibility === "public_domain" && b.source === "market",
+  );
 }

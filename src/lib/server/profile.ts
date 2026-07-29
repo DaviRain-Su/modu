@@ -3,6 +3,7 @@ import { getSql } from "@/lib/db";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSessionUser } from "@/lib/auth/verify.server";
 import { cfWorkerEnsureProfile } from "@/lib/cloudflare/worker-client";
+import { isPrivateBookId } from "@/lib/books/copyright";
 
 export type PublicProfile = {
   userId: string;
@@ -142,7 +143,7 @@ export const listPublicAnnotationsByUser = createServerFn({ method: "GET" })
   .validator((input: { userId: string }) => input)
   .handler(async ({ data }) => {
     const sql = await getSql();
-    return sql<{
+    const rows = await sql<{
       id: string;
       book_id: string;
       quote: string;
@@ -156,4 +157,10 @@ export const listPublicAnnotationsByUser = createServerFn({ method: "GET" })
       order by created_at desc
       limit 50
     `;
+    // 版权：私有书公开条目去掉原文摘录
+    return rows.map((r) =>
+      isPrivateBookId(r.book_id)
+        ? { ...r, quote: "" }
+        : r,
+    );
   });

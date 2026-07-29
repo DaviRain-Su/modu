@@ -1,6 +1,9 @@
 export type BookFormat = "epub" | "pdf" | "text";
 export type BookSource = "market" | "upload";
 
+/** 版权可见性：书城仅 public_domain；用户上传强制 private */
+export type BookVisibility = "public_domain" | "private";
+
 export type BookCategory =
   | "文学"
   | "社科"
@@ -15,7 +18,6 @@ export interface Chapter {
   id: string;
   title: string;
   content: string;
-  /** EPUB spine href for navigation (optional) */
   href?: string;
 }
 
@@ -29,22 +31,24 @@ export interface Book {
   category: Exclude<BookCategory, "全部">;
   format: BookFormat;
   source: BookSource;
+  /** 书城书 = public_domain；上传 = private（永不进书城） */
+  visibility: BookVisibility;
+  /** 例如 "公版 / Public Domain"、"仅自己可见" */
+  license: string;
+  /** 许可说明 / 来源（古登堡、中华古籍等） */
+  licenseNote?: string;
   tags: string[];
   rating: number;
   readers: number;
   wordCount: number;
-  /** Built-in sample chapters (text format) or parsed TOC */
   chapters?: Chapter[];
-  /** R2 / storage object key for binary file */
   storageKey?: string;
-  /** Local blob URL or object URL for reading uploaded files */
   fileName?: string;
   fileSize?: number;
   pageCount?: number;
-  /** Short text extract for AI / listing */
   previewText?: string;
   createdAt: number;
-  progress?: number; // 0-100
+  progress?: number;
   lastReadAt?: number;
   lastChapterId?: string;
   lastPage?: number;

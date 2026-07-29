@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Flame, MessageSquareQuote } from "lucide-react";
+import { Flame, MessageSquareQuote, Shield } from "lucide-react";
 import { BookCover } from "@/components/books/BookCover";
 import { Badge } from "@/components/ui/badge";
-import { MARKET_BOOKS } from "@/lib/books/catalog";
+import { listMarketBooks, MARKET_BOOKS } from "@/lib/books/catalog";
+import { publicBookLabel } from "@/lib/books/copyright";
 import { useLibraryStore } from "@/lib/store/library";
 import {
   getHotBooks,
@@ -27,6 +28,7 @@ function RankingsPage() {
       bookId: string;
       quote: string;
       note: string;
+      isPrivateBook?: boolean;
     }[]
   >([]);
   const [ready, setReady] = useState(false);
@@ -44,45 +46,60 @@ function RankingsPage() {
       .finally(() => setReady(true));
   }, []);
 
-  // Seed empty ranking with market popularity so the board isn't empty on first visit
+  const market = listMarketBooks();
+  // 空榜时用公版热度种子 —— 永不混入私有上传
   const displayHot =
     hot.length > 0
       ? hot
-      : MARKET_BOOKS.slice()
+      : market
+          .slice()
           .sort((a, b) => b.readers - a.readers)
           .slice(0, 8)
-          .map((b, i) => ({
+          .map((b) => ({
             bookId: b.id,
             readCount: Math.round(b.readers / 1000),
             annotationCount: 0,
             score: b.readers,
-            seed: true as const,
           }));
 
   return (
     <div className="space-y-10">
       <div>
-        <h1 className="font-serif text-3xl font-medium tracking-tight">热门榜</h1>
+        <h1 className="font-serif text-3xl font-medium tracking-tight">
+          内部榜单
+        </h1>
         <p className="mt-1 text-fg-muted">
-          根据真实阅读与公开批注聚合 · 留言板展示社区洞见
+          公版书热度 + 读者公开评论/摘要 · 私有书正文永不公开展示
+        </p>
+      </div>
+
+      <div className="flex items-start gap-2 rounded-[var(--radius-lg)] border border-border bg-bg-subtle/50 px-3 py-3 text-xs leading-relaxed text-fg-muted">
+        <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+        <p>
+          热门书单仅含<strong className="text-fg">公版书城</strong>
+          书目。私有上传可贡献阅读次数到系统统计，但留言板只显示你的
+          <strong className="text-fg">评论/摘要</strong>
+          ，不展示书名与原文。
         </p>
       </div>
 
       <section>
         <div className="mb-4 flex items-center gap-2 text-sm font-medium text-fg-muted">
           <Flame className="h-4 w-4 text-accent" />
-          热门书单
+          公版热门
           {!ready && <span className="text-xs">加载中…</span>}
         </div>
         <div className="space-y-2">
           {displayHot.map((row, i) => {
-            const book = getBook(row.bookId) ?? MARKET_BOOKS.find((b) => b.id === row.bookId);
-            if (!book) return null;
+            const book =
+              getBook(row.bookId) ??
+              MARKET_BOOKS.find((b) => b.id === row.bookId);
+            if (!book || book.visibility !== "public_domain") return null;
             return (
               <Link
                 key={row.bookId}
                 to="/book/$bookId"
-                params={{ bookId: book.id }}
+                params={{ bookId: row.bookId }}
                 className="flex items-center gap-3 rounded-[var(--radius-xl)] border border-border bg-bg-elevated p-3 transition-colors hover:bg-bg-subtle sm:gap-4 sm:p-4"
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-subtle text-sm font-medium text-fg-muted">
@@ -90,15 +107,15 @@ function RankingsPage() {
                 </span>
                 <BookCover book={book} size="sm" />
                 <div className="min-w-0 flex-1">
-                  <h3 className="truncate font-medium">{book.title}</h3>
-                  <p className="truncate text-sm text-fg-muted">{book.author}</p>
-                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-fg-subtle">
-                    <span>阅读 {formatCount(row.readCount)}</span>
-                    <span>批注 {row.annotationCount}</span>
-                    {"seed" in row && row.seed ? (
-                      <Badge variant="outline">预热榜</Badge>
-                    ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate font-medium">{book.title}</p>
+                    <Badge variant="outline">公版</Badge>
                   </div>
+                  <p className="truncate text-sm text-fg-muted">{book.author}</p>
+                </div>
+                <div className="hidden text-right text-xs text-fg-subtle sm:block">
+                  <p>阅读 {formatCount(row.readCount)}</p>
+                  <p>批注 {row.annotationCount}</p>
                 </div>
               </Link>
             );
@@ -109,17 +126,16 @@ function RankingsPage() {
       <section>
         <div className="mb-4 flex items-center gap-2 text-sm font-medium text-fg-muted">
           <MessageSquareQuote className="h-4 w-4 text-accent" />
-          留言板 · 公开批注
+          公开留言 · 摘要
         </div>
         {notes.length === 0 ? (
-          <div className="rounded-[var(--radius-xl)] border border-dashed border-border px-6 py-12 text-center text-sm text-fg-muted">
-            还没有公开批注。登录后在阅读器中选中文字，即可画线并留下注释。
-          </div>
+          <p className="rounded-[var(--radius-xl)] border border-dashed border-border py-12 text-center text-sm text-fg-muted">
+            还没有公开评论。读公版书时写下批注，或对私有书只公开你的摘要。
+          </p>
         ) : (
           <div className="space-y-3">
             {notes.map((n) => {
-              const book =
-                getBook(n.bookId) ?? MARKET_BOOKS.find((b) => b.id === n.bookId);
+              const label = publicBookLabel(n.bookId, getBook(n.bookId));
               return (
                 <div
                   key={n.id}
@@ -134,17 +150,26 @@ function RankingsPage() {
                       {n.displayName}
                     </Link>
                     <span>·</span>
-                    <Link
-                      to="/book/$bookId"
-                      params={{ bookId: n.bookId }}
-                      className="hover:underline"
-                    >
-                      {book?.title ?? n.bookId}
-                    </Link>
+                    {label.linkable ? (
+                      <Link
+                        to="/book/$bookId"
+                        params={{ bookId: n.bookId }}
+                        className="hover:text-fg"
+                      >
+                        {label.title}
+                      </Link>
+                    ) : (
+                      <span className="inline-flex items-center gap-1">
+                        {label.title}
+                        <Badge variant="outline">私密书</Badge>
+                      </span>
+                    )}
                   </div>
-                  <blockquote className="mt-2 border-l-2 border-accent/50 pl-3 text-sm text-fg-muted">
-                    {n.quote}
-                  </blockquote>
+                  {n.quote ? (
+                    <blockquote className="mt-2 border-l-2 border-accent/40 pl-3 text-sm text-fg-muted">
+                      {n.quote}
+                    </blockquote>
+                  ) : null}
                   <p className="mt-2 text-sm leading-relaxed">{n.note}</p>
                 </div>
               );
