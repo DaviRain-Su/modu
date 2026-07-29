@@ -82,9 +82,9 @@ export const Route = createFileRoute("/api/health")({
           },
           tip: cfAuth
             ? worker.ok
-              ? "已连接 Cloudflare Worker（登录走 D1）。请用邮箱重新注册一次。"
-              : "已配置 Worker URL 但健康检查失败，请确认 Worker 在线。"
-            : "开发模式：未自动连 Worker。生产会默认连 modu-api.davirain-yin.workers.dev。",
+              ? "登录走 Cloudflare D1。Worker 须配置 GROK_AUTH_CLIENT_ID/SECRET，否则 Google/X 会 Invalid redirect URI。"
+              : "已配置 Worker 登录但健康检查失败。"
+            : "Google/X 走主应用 OAuth（平台 GROK_AUTH）。Worker 仅用于 R2/AI（自动连）。D1 登录需 MODU_CF_API_SECRET 或 MODU_CF_AUTH_ON_WORKER=true。",
         };
         return new Response(JSON.stringify(body, null, 2), {
           status: 200,
