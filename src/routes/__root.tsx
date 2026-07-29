@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { Toaster } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
+import { AuthProvider } from "@/lib/auth/provider";
 import { useLibraryStore } from "@/lib/store/library";
 import appCss from "../styles.css?url";
 
@@ -24,7 +25,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "墨读 — 支持 PDF / EPUB 的在线阅读器，书城精选、本地上传、AI 伴读，手机与电脑皆宜。",
+          "墨读 — 支持 PDF / EPUB 的在线阅读器，书城精选、本地上传、AI 伴读与公开批注，手机与电脑皆宜。",
       },
       { name: "theme-color", content: "#0b0b0c" },
     ],
@@ -46,16 +47,18 @@ function RootComponent() {
         <HeadContent />
       </head>
       <body>
-        <AppShell>
-          <Outlet />
-        </AppShell>
-        <Toaster
-          theme="dark"
-          position="top-center"
-          toastOptions={{
-            className: "border border-border bg-bg-elevated text-fg",
-          }}
-        />
+        <AuthProvider>
+          <AppShell>
+            <Outlet />
+          </AppShell>
+          <Toaster
+            theme="dark"
+            position="top-center"
+            toastOptions={{
+              className: "border border-border bg-bg-elevated text-fg",
+            }}
+          />
+        </AuthProvider>
         <Scripts />
       </body>
     </html>

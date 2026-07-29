@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   BookOpen,
@@ -13,6 +14,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useLibraryStore } from "@/lib/store/library";
+import {
+  listBookAnnotations,
+  type AnnotationRow,
+} from "@/lib/server/social";
 import { formatBytes, formatCount } from "@/lib/utils";
 
 export const Route = createFileRoute("/book/$bookId")({
@@ -32,6 +37,13 @@ function BookDetailPage() {
   const book = getBook(bookId);
   const progress = getProgress(bookId);
   const onShelf = isOnShelf(bookId);
+  const [annotations, setAnnotations] = useState<AnnotationRow[]>([]);
+
+  useEffect(() => {
+    void listBookAnnotations({ data: bookId })
+      .then(setAnnotations)
+      .catch(() => setAnnotations([]));
+  }, [bookId]);
 
   if (ready && !book) {
     return (
@@ -83,6 +95,9 @@ function BookDetailPage() {
                 <Clock className="h-3.5 w-3.5" />约{" "}
                 {Math.max(1, Math.round(book.wordCount / 500))} 分钟
               </span>
+            )}
+            {annotations.length > 0 && (
+              <span>{annotations.length} 条公开批注</span>
             )}
           </div>
 
@@ -186,6 +201,38 @@ function BookDetailPage() {
           </div>
         </section>
       )}
+
+      <section>
+        <h2 className="mb-4 text-lg font-medium tracking-tight">公开批注</h2>
+        {annotations.length === 0 ? (
+          <p className="rounded-[var(--radius-xl)] border border-dashed border-border py-10 text-center text-sm text-fg-muted">
+            还没有公开批注。登录后在阅读器中选中文字即可画线分享。
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {annotations.map((a) => (
+              <div
+                key={a.id}
+                className="rounded-[var(--radius-xl)] border border-border bg-bg-elevated p-4"
+              >
+                <Link
+                  to="/u/$userId"
+                  params={{ userId: a.userId }}
+                  className="text-xs font-medium text-fg-muted hover:text-fg"
+                >
+                  {a.displayName}
+                </Link>
+                <blockquote className="mt-2 border-l-2 border-accent/40 pl-3 text-sm text-fg-muted">
+                  {a.quote}
+                </blockquote>
+                {a.note ? (
+                  <p className="mt-2 text-sm leading-relaxed">{a.note}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

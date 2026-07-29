@@ -1,5 +1,15 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BookMarked, BookOpen, Home, Library, Upload } from "lucide-react";
+import {
+  BookMarked,
+  BookOpen,
+  Flame,
+  Home,
+  Library,
+  Upload,
+  UserRound,
+} from "lucide-react";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { signOut } from "@/lib/auth/client";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -11,18 +21,59 @@ const nav = [
     match: (p: string) => p.startsWith("/library") || p.startsWith("/book"),
   },
   {
+    to: "/rankings",
+    label: "热榜",
+    icon: Flame,
+    match: (p: string) => p.startsWith("/rankings"),
+  },
+  {
     to: "/shelf",
     label: "书架",
     icon: BookMarked,
     match: (p: string) => p.startsWith("/shelf"),
   },
-  {
-    to: "/upload",
-    label: "上传",
-    icon: Upload,
-    match: (p: string) => p.startsWith("/upload"),
-  },
 ] as const;
+
+function AuthSlot() {
+  const { user, isPending } = useCurrentUserState();
+  if (isPending) {
+    return (
+      <div className="h-9 w-20 animate-pulse rounded-[var(--radius-md)] bg-bg-subtle" />
+    );
+  }
+  if (!user) {
+    return (
+      <Link
+        to="/login"
+        className="rounded-[var(--radius-md)] bg-primary px-3.5 py-2 text-sm font-medium text-primary-fg"
+      >
+        登录
+      </Link>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <Link
+        to="/account"
+        className="flex max-w-[9rem] items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-sm hover:bg-bg-subtle"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-bg-subtle text-xs font-medium">
+          {(user.displayName ?? user.primaryEmail ?? "U").charAt(0)}
+        </span>
+        <span className="hidden truncate sm:inline">
+          {user.displayName ?? "账户"}
+        </span>
+      </Link>
+      <button
+        type="button"
+        onClick={() => void signOut()}
+        className="hidden text-xs text-fg-subtle hover:text-fg md:inline"
+      >
+        退出
+      </button>
+    </div>
+  );
+}
 
 export function AppShell({
   children,
@@ -41,7 +92,7 @@ export function AppShell({
   return (
     <div className="min-h-dvh bg-bg text-fg">
       <header className="sticky top-0 z-40 border-b border-border/80 bg-bg/90 backdrop-blur-md safe-pt">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:h-16 sm:px-6">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
           <Link to="/" className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] bg-primary text-primary-fg">
               <BookOpen className="h-4 w-4" strokeWidth={1.75} />
@@ -54,7 +105,7 @@ export function AppShell({
             </div>
           </Link>
 
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav className="hidden items-center gap-1 lg:flex">
             {nav.map((item) => {
               const active = item.match(pathname);
               return (
@@ -62,7 +113,7 @@ export function AppShell({
                   key={item.to}
                   to={item.to}
                   className={cn(
-                    "rounded-[var(--radius-md)] px-3.5 py-2 text-sm transition-colors",
+                    "rounded-[var(--radius-md)] px-3 py-2 text-sm transition-colors",
                     active
                       ? "bg-bg-subtle text-fg"
                       : "text-fg-muted hover:bg-bg-subtle/70 hover:text-fg",
@@ -72,14 +123,31 @@ export function AppShell({
                 </Link>
               );
             })}
+            <Link
+              to="/upload"
+              className={cn(
+                "rounded-[var(--radius-md)] px-3 py-2 text-sm transition-colors",
+                pathname.startsWith("/upload")
+                  ? "bg-bg-subtle text-fg"
+                  : "text-fg-muted hover:bg-bg-subtle/70 hover:text-fg",
+              )}
+            >
+              上传
+            </Link>
+            <Link
+              to="/account"
+              className={cn(
+                "rounded-[var(--radius-md)] px-3 py-2 text-sm transition-colors",
+                pathname.startsWith("/account")
+                  ? "bg-bg-subtle text-fg"
+                  : "text-fg-muted hover:bg-bg-subtle/70 hover:text-fg",
+              )}
+            >
+              账户
+            </Link>
           </nav>
 
-          <Link
-            to="/library"
-            className="hidden rounded-[var(--radius-md)] bg-primary px-3.5 py-2 text-sm font-medium text-primary-fg sm:inline-flex"
-          >
-            开始阅读
-          </Link>
+          <AuthSlot />
         </div>
       </header>
 
@@ -87,8 +155,8 @@ export function AppShell({
         {children}
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 backdrop-blur-md safe-pb md:hidden">
-        <div className="mx-auto grid max-w-lg grid-cols-4 px-2 pt-1">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 backdrop-blur-md safe-pb lg:hidden">
+        <div className="mx-auto grid max-w-lg grid-cols-5 px-1 pt-1">
           {nav.map((item) => {
             const Icon = item.icon;
             const active = item.match(pathname);
@@ -106,6 +174,18 @@ export function AppShell({
               </Link>
             );
           })}
+          <Link
+            to="/account"
+            className={cn(
+              "flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px]",
+              pathname.startsWith("/account") || pathname.startsWith("/login")
+                ? "text-fg"
+                : "text-fg-subtle",
+            )}
+          >
+            <UserRound className="h-5 w-5" strokeWidth={pathname.startsWith("/account") ? 2.1 : 1.7} />
+            我的
+          </Link>
         </div>
       </nav>
     </div>

@@ -18,6 +18,8 @@ import { AiPanel } from "@/components/reader/AiPanel";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
 import { useLibraryStore } from "@/lib/store/library";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { recordBookRead } from "@/lib/server/social";
 import type { ReadingProgress } from "@/lib/books/types";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +56,7 @@ function ReaderPage() {
   const getProgress = useLibraryStore((s) => s.getProgress);
   const saveProgress = useLibraryStore((s) => s.saveProgress);
   const addToShelf = useLibraryStore((s) => s.addToShelf);
+  const { user } = useCurrentUserState();
 
   const book = getBook(bookId);
   const stored = getProgress(bookId);
@@ -76,6 +79,12 @@ function ReaderPage() {
   useEffect(() => {
     if (book) addToShelf(book.id);
   }, [book, addToShelf]);
+
+  useEffect(() => {
+    if (book && user) {
+      void recordBookRead({ data: book.id }).catch(() => {});
+    }
+  }, [book?.id, user?.id]);
 
   useEffect(() => {
     if (chapterParam) setChapterId(chapterParam);
@@ -271,7 +280,9 @@ function ReaderPage() {
         {isLg && aiOpen && (
           <aside className="w-[360px] shrink-0 border-l border-border">
             <AiPanel
+              bookId={book.id}
               bookTitle={book.title}
+              chapterId={chapter?.id}
               selectedText={selectedText}
               onClearSelection={() => setSelectedText("")}
               className="h-full"
@@ -333,7 +344,9 @@ function ReaderPage() {
             className="h-[min(88dvh,720px)] p-0"
           >
             <AiPanel
+              bookId={book.id}
               bookTitle={book.title}
+              chapterId={chapter?.id}
               selectedText={selectedText}
               onClearSelection={() => setSelectedText("")}
               className="h-full rounded-t-[var(--radius-xl)]"

@@ -6,9 +6,10 @@
  * Preview / offline: falls back to IndexedDB (see idb.ts) so uploads work
  * without any Cloudflare account.
  *
- * Object key layout:
+ * Object key layout (aligned with liber-style account blobs):
  *   books/{owner}/{bookId}/{filename}
  *   covers/{owner}/{bookId}.jpg
+ *   ai-chats/{userId}/{bookId}/{conversationId}.json
  */
 
 import {
@@ -48,8 +49,6 @@ export async function putBookFile(input: {
     input.contentType || input.blob.type || "application/octet-stream";
 
   if (R2_PUBLIC) {
-    // Real R2 path: client uploads via presigned URL from a server function.
-    // In this demo we still mirror to IndexedDB so the reader works offline.
     await idbPutObject({
       key,
       blob: input.blob,
@@ -99,13 +98,14 @@ export function describeStorage(): {
     return {
       backend: "r2",
       label: "Cloudflare R2",
-      detail: "对象存储已连接，图书文件持久化到 R2 存储桶。",
+      detail:
+        "图书与 AI 对话档案写入 R2（ai-chats/{user}/…）。官方 AI 经 Pi 可接 Workers AI / AI Gateway。",
     };
   }
   return {
     backend: "indexeddb",
     label: "Cloudflare R2（本地模拟）",
     detail:
-      "当前使用浏览器 IndexedDB 模拟 R2 对象存储。部署时配置 Cloudflare R2 即可无缝切换。",
+      "预览用 IndexedDB 模拟 R2：图书与 ai-chats 对话档案共用同一 key 布局。部署后配置 R2 / Workers AI 即可切换。",
   };
 }
