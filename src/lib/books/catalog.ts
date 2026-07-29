@@ -247,6 +247,32 @@ export const MARKET_BOOKS: Book[] = [
     ],
     createdAt: Date.UTC(2020, 0, 8),
   },
+  {
+    id: "pd_sunzi_bingfa",
+    title: "孙子兵法（节选）",
+    author: "孙武",
+    description: "《始计》《作战》篇节选。公版古籍。",
+    coverColor: "#2c241c",
+    coverText: "孙子",
+    category: "历史",
+    ...PD,
+    licenseNote: "ancient · 先秦兵书，公共领域 · https://zh.wikisource.org/wiki/孫子兵法",
+    tags: ["公版","兵法","古典"],
+    rating: 4.8,
+    readers: 640000,
+    wordCount: 134,
+    chapters: [
+      ch("c1", "始计第一", [
+        "孙子曰：兵者，国之大事，死生之地，存亡之道，不可不察也。",
+        "故经之以五事，校之以计，而索其情：一曰道，二曰天，三曰地，四曰将，五曰法。",
+      ]),
+      ch("c2", "作战第二", [
+        "孙子曰：凡用兵之法，驰车千驷，革车千乘，带甲十万，千里馈粮。",
+        "则内外之费，宾客之用，胶漆之材，车甲之奉，日费千金，然后十万之师举矣。",
+      ])
+    ],
+    createdAt: Date.UTC(2020, 0, 9),
+  },
 ];
 
 export const CATEGORIES = [

@@ -12,17 +12,24 @@ import {
   Type,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { z } from "zod";
 import { TextReader } from "@/components/reader/TextReader";
 import { PdfReader } from "@/components/reader/PdfReader";
 import { EpubReader } from "@/components/reader/EpubReader";
 import { AiPanel } from "@/components/reader/AiPanel";
+import {
+  SelectionToolbar,
+  type HighlightColor,
+  type SelectionAnchor,
+} from "@/components/reader/SelectionToolbar";
+import { AnnotationPopover } from "@/components/reader/AnnotationPopover";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
 import { useLibraryStore } from "@/lib/store/library";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { recordBookRead } from "@/lib/server/social";
-import type { Book, ReadingProgress } from "@/lib/books/types";
+import { recordBookRead, createAnnotation } from "@/lib/server/social";
+import type { Book, Highlight, ReadingProgress } from "@/lib/books/types";
 import {
   DEFAULT_READER_PREFS,
   loadReaderPrefs,
@@ -31,9 +38,8 @@ import {
   saveReaderPrefs,
   type ReaderFont,
   type ReaderPrefs,
-  type ReaderTheme,
 } from "@/lib/reader/prefs";
-import { cn } from "@/lib/utils";
+import { cn, uid } from "@/lib/utils";
 
 const searchSchema = z.object({
   chapter: z.string().optional(),
@@ -75,10 +81,25 @@ function ReaderPage() {
   const [prefs, setPrefs] = useState<ReaderPrefs>(DEFAULT_READER_PREFS);
   const [prefsReady, setPrefsReady] = useState(false);
 
+  // selection → toolbar → annotate
+  const [sel, setSel] = useState<SelectionAnchor | null>(null);
+  const [noteDraft, setNoteDraft] = useState<{
+    quote: string;
+    color: HighlightColor;
+  } | null>(null);
+  const [annoBusy, setAnnoBusy] = useState(false);
+  const [localHighlights, setLocalHighlights] = useState<Highlight[]>(
+    stored?.highlights ?? [],
+  );
+
   useEffect(() => {
     setPrefs(loadReaderPrefs());
     setPrefsReady(true);
   }, []);
+
+  useEffect(() => {
+    setLocalHighlights(stored?.highlights ?? []);
+  }, [bookId, stored?.highlights]);
 
   const updatePrefs = useCallback((patch: Partial<ReaderPrefs>) => {
     setPrefs((prev) => {
@@ -146,7 +167,7 @@ function ReaderPage() {
         lastChapterId: chapterId || chapter?.id,
         lastPage: page,
         bookmarks: stored?.bookmarks ?? [],
-        highlights: stored?.highlights ?? [],
+        highlights: extra?.highlights ?? localHighlights,
         updatedAt: Date.now(),
         ...extra,
       };
@@ -159,7 +180,7 @@ function ReaderPage() {
       page,
       saveProgress,
       stored?.bookmarks,
-      stored?.highlights,
+      localHighlights,
     ],
   );
 
@@ -171,9 +192,102 @@ function ReaderPage() {
     [persist],
   );
 
-  const onSelectText = useCallback((text: string) => {
-    setSelectedText(text);
+  const clearBrowserSelection = () => {
+    try {
+      window.getSelection()?.removeAllRanges();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const saveHighlight = useCallback(
+    async (input: {
+      text: string;
+      note?: string;
+      color: HighlightColor;
+      isPublic?: boolean;
+    }) => {
+      if (!book) return;
+      const hl: Highlight = {
+        id: uid("hl"),
+        text: input.text,
+        note: input.note,
+        chapterId: chapter?.id,
+        color: input.color,
+        isPublic: input.isPublic,
+        createdAt: Date.now(),
+      };
+      const next = [hl, ...localHighlights];
+      setLocalHighlights(next);
+      persist(progress, { highlights: next });
+
+      // sync public annotation when signed in
+      if (input.isPublic && user) {
+        try {
+          await createAnnotation({
+            data: {
+              bookId: book.id,
+              quote: input.text,
+              note: input.note || "",
+              chapterId: chapter?.id,
+              kind: input.note ? "note" : "highlight",
+              isPublic: true,
+            },
+          });
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "公开同步失败，已保存在本机");
+        }
+      }
+    },
+    [book, chapter?.id, localHighlights, persist, progress, user],
+  );
+
+  const handleHighlight = (color: HighlightColor) => {
+    if (!sel) return;
+    void saveHighlight({ text: sel.text, color });
+    toast.success("已划线");
+    clearBrowserSelection();
+    setSel(null);
+  };
+
+  const handleAnnotate = () => {
+    if (!sel) return;
+    setNoteDraft({ quote: sel.text, color: "gold" });
+    setSel(null);
+    // keep selection cleared after opening sheet
+    clearBrowserSelection();
+  };
+
+  const handleAskAi = () => {
+    if (!sel) return;
+    setSelectedText(sel.text);
     setAiOpen(true);
+    clearBrowserSelection();
+    setSel(null);
+  };
+
+  const handleCopy = async () => {
+    if (!sel) return;
+    try {
+      await navigator.clipboard.writeText(sel.text);
+      toast.success("已复制");
+    } catch {
+      toast.error("复制失败");
+    }
+    clearBrowserSelection();
+    setSel(null);
+  };
+
+  // PDF / EPUB fallback: text only → still open toolbar centered
+  const onSelectTextFallback = useCallback((text: string) => {
+    const t = text.replace(/\s+/g, " ").trim();
+    if (t.length < 2) return;
+    setSel({
+      text: t,
+      x: window.innerWidth / 2,
+      y: window.innerHeight * 0.35,
+      bottom: window.innerHeight * 0.35 + 24,
+    });
   }, []);
 
   const aiContextText =
@@ -207,6 +321,8 @@ function ReaderPage() {
   const useText =
     book.format === "text" ||
     (book.source === "community" && Boolean(chapter?.content));
+  const isPrivateBook =
+    book.visibility === "private" || book.source === "upload";
 
   return (
     <div className="relative flex h-dvh flex-col bg-bg text-fg">
@@ -232,6 +348,9 @@ function ReaderPage() {
                 {book.format === "pdf" && book.storageKey
                   ? `PDF · 第 ${page} 页`
                   : chapter?.title || book.format.toUpperCase()}
+                {localHighlights.length > 0
+                  ? ` · ${localHighlights.length} 处划线`
+                  : ""}
               </p>
             </div>
             {showToc && (
@@ -292,10 +411,13 @@ function ReaderPage() {
           onClick={(e) => {
             if (
               (e.target as HTMLElement).closest(
-                "button, a, input, textarea, canvas, iframe, [data-text-layer]",
+                "button, a, input, textarea, canvas, iframe, [data-text-layer], mark",
               )
             )
               return;
+            // don't toggle chrome while selecting
+            if (window.getSelection()?.toString().trim()) return;
+            setSel(null);
             setChromeVisible((v) => !v);
           }}
         >
@@ -309,8 +431,9 @@ function ReaderPage() {
               maxWidth={prefs.maxWidth}
               font={prefs.font}
               theme={prefs.theme}
+              highlights={localHighlights}
               onProgress={onProgress}
-              onSelectText={onSelectText}
+              onSelect={setSel}
             />
           )}
           {!useText && book.format === "pdf" && book.storageKey && (
@@ -320,7 +443,7 @@ function ReaderPage() {
               initialPage={page}
               onProgress={onProgress}
               onPageChange={setPage}
-              onSelectText={onSelectText}
+              onSelectText={onSelectTextFallback}
               onPageText={setPageContext}
             />
           )}
@@ -332,7 +455,7 @@ function ReaderPage() {
               font={prefs.font}
               lineHeight={prefs.lineHeight}
               onProgress={onProgress}
-              onSelectText={onSelectText}
+              onSelectText={onSelectTextFallback}
             />
           )}
           {!useText && !book.storageKey && (
@@ -356,7 +479,51 @@ function ReaderPage() {
         )}
       </div>
 
-      {useText && chapters.length > 1 && chromeVisible && (
+      {/* 选区工具条 */}
+      {sel && !noteDraft && (
+        <SelectionToolbar
+          anchor={sel}
+          onHighlight={handleHighlight}
+          onAnnotate={handleAnnotate}
+          onAskAi={handleAskAi}
+          onCopy={() => void handleCopy()}
+          onClose={() => {
+            clearBrowserSelection();
+            setSel(null);
+          }}
+        />
+      )}
+
+      {/* 批注填写框 */}
+      {noteDraft && (
+        <AnnotationPopover
+          quote={noteDraft.quote}
+          color={noteDraft.color}
+          isPrivateBook={isPrivateBook}
+          signedIn={Boolean(user)}
+          busy={annoBusy}
+          onClose={() => setNoteDraft(null)}
+          onSave={async ({ note, isPublic, color }) => {
+            setAnnoBusy(true);
+            try {
+              await saveHighlight({
+                text: noteDraft.quote,
+                note,
+                color,
+                isPublic: isPublic && Boolean(user),
+              });
+              toast.success(
+                isPublic && user ? "已划线并公开批注" : "已保存划线与批注",
+              );
+              setNoteDraft(null);
+            } finally {
+              setAnnoBusy(false);
+            }
+          }}
+        />
+      )}
+
+      {useText && chapters.length > 1 && chromeVisible && !sel && !noteDraft && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-between gap-3 px-3 pb-3 safe-pb">
           <Button
             variant="secondary"
@@ -473,7 +640,6 @@ function ReaderPage() {
             <p className="text-xs text-fg-subtle">设置会自动记住</p>
           </SheetHeader>
           <div className="max-h-[calc(min(90dvh,680px)-5rem)] space-y-6 overflow-y-auto px-5 py-5 safe-pb">
-            {/* Preview strip */}
             <div
               className={cn(
                 "rounded-[var(--radius-lg)] px-4 py-4 text-sm transition-colors",
@@ -555,25 +721,19 @@ function ReaderPage() {
               max={28}
               step={1}
               onDec={() =>
-                updatePrefs({
-                  fontSize: Math.max(14, prefs.fontSize - 1),
-                })
+                updatePrefs({ fontSize: Math.max(14, prefs.fontSize - 1) })
               }
               onInc={() =>
-                updatePrefs({
-                  fontSize: Math.min(28, prefs.fontSize + 1),
-                })
+                updatePrefs({ fontSize: Math.min(28, prefs.fontSize + 1) })
               }
               onChange={(v) => updatePrefs({ fontSize: v })}
             />
-
             <SliderRow
               label={`行距 ${prefs.lineHeight.toFixed(1)}`}
               value={Math.round(prefs.lineHeight * 10)}
               min={15}
               max={24}
               step={1}
-              display={prefs.lineHeight.toFixed(1)}
               onDec={() =>
                 updatePrefs({
                   lineHeight: Math.max(
@@ -592,7 +752,6 @@ function ReaderPage() {
               }
               onChange={(v) => updatePrefs({ lineHeight: v / 10 })}
             />
-
             <SliderRow
               label={`字距 ${(prefs.letterSpacing * 100).toFixed(0)}%`}
               value={Math.round(prefs.letterSpacing * 100)}
@@ -617,22 +776,17 @@ function ReaderPage() {
               }
               onChange={(v) => updatePrefs({ letterSpacing: v / 100 })}
             />
-
             <SliderRow
-              label={`版心宽度 ${prefs.maxWidth}ch 级`}
+              label={`版心宽度 ${prefs.maxWidth}`}
               value={prefs.maxWidth}
               min={32}
               max={52}
               step={2}
               onDec={() =>
-                updatePrefs({
-                  maxWidth: Math.max(32, prefs.maxWidth - 2),
-                })
+                updatePrefs({ maxWidth: Math.max(32, prefs.maxWidth - 2) })
               }
               onInc={() =>
-                updatePrefs({
-                  maxWidth: Math.min(52, prefs.maxWidth + 2),
-                })
+                updatePrefs({ maxWidth: Math.min(52, prefs.maxWidth + 2) })
               }
               onChange={(v) => updatePrefs({ maxWidth: v })}
             />
@@ -675,7 +829,6 @@ function SliderRow({
   min: number;
   max: number;
   step: number;
-  display?: string;
   onDec: () => void;
   onInc: () => void;
   onChange: (v: number) => void;

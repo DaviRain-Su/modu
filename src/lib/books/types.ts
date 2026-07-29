@@ -42,7 +42,6 @@ export interface Book {
   visibility: BookVisibility;
   license: string;
   licenseNote?: string;
-  /** 公版声明依据（社区贡献） */
   pdBasis?: PublicDomainBasis;
   sourceUrl?: string;
   tags: string[];
@@ -88,6 +87,9 @@ export interface Highlight {
   note?: string;
   chapterId?: string;
   page?: number;
+  /** gold | vermilion | celadon */
+  color?: "gold" | "vermilion" | "celadon";
+  isPublic?: boolean;
   createdAt: number;
 }
 

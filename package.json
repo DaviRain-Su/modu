@@ -17,7 +17,10 @@
     "format": "prettier --write .",
     "cf:dev": "cd cloudflare && npm install && npm run db:init && npm run dev",
     "cf:deploy": "cd cloudflare && npm install && npm run deploy",
-    "cf:db": "cd cloudflare && npm run db:init:remote"
+    "cf:db": "cd cloudflare && npm run db:init:remote",
+    "pd:scaffold": "node scripts/modu-pd-cli.mjs scaffold",
+    "pd:validate": "node scripts/modu-pd-cli.mjs validate",
+    "pd:pack": "node scripts/modu-pd-cli.mjs pack"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.82.1",
