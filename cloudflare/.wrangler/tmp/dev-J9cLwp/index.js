@@ -46721,16 +46721,15 @@ function createAuth(env2) {
       cookieCache: { enabled: true, maxAge: 300 }
     },
     advanced: {
+      // 与主应用 server.ts 一致：useSecureCookies 会加 __Secure- 前缀。
+      // 不要再写 __Host- 名，否则会变成非法的 __Secure-__Host-... 双前缀。
       useSecureCookies: true,
+      cookiePrefix: "grok-auth",
       defaultCookieAttributes: {
         secure: true,
         sameSite: "lax",
         path: "/",
         httpOnly: true
-      },
-      cookies: {
-        session_token: { name: "__Host-grok-auth.session_token" },
-        session_data: { name: "__Host-grok-auth.session_data" }
       }
     },
     plugins: [
@@ -46771,8 +46770,20 @@ var src_default = {
         if (!env2.DB) {
           return json({ error: "D1 binding missing" }, cors, 503);
         }
+        const origin = appOrigin(env2);
+        const method = request.method.toUpperCase();
+        const body = method === "GET" || method === "HEAD" ? void 0 : await request.arrayBuffer();
+        const authRequest = new Request(
+          `${origin}${url.pathname}${url.search}`,
+          {
+            method: request.method,
+            headers: request.headers,
+            body: body && body.byteLength > 0 ? body : void 0,
+            redirect: "manual"
+          }
+        );
         const auth = createAuth(env2);
-        const res = await auth.handler(request);
+        const res = await auth.handler(authRequest);
         return withCors(res, cors);
       }
       if (path === "/health" || path === "/") {
