@@ -51,9 +51,11 @@ import {
   DEFAULT_READER_PREFS,
   loadReaderPrefs,
   READER_FONT_META,
+  READER_LAYOUT_META,
   READER_THEME_META,
   saveReaderPrefs,
   type ReaderFont,
+  type ReaderLayout,
   type ReaderPrefs,
 } from "@/lib/reader/prefs";
 import { cn, uid } from "@/lib/utils";
@@ -538,14 +540,28 @@ function ReaderPage() {
         <div
           className="relative min-w-0 flex-1"
           onClick={(e) => {
+            const el = e.target as HTMLElement;
             if (
-              (e.target as HTMLElement).closest(
-                "button, a, input, textarea, canvas, iframe, [data-text-layer], mark",
+              el.closest(
+                "button, a, input, textarea, canvas, iframe, [data-text-layer], mark, [data-page-turn], [data-reader]",
               )
-            )
-              return;
+            ) {
+              // 点在阅读器热区 / 控件上：不切换顶栏（避免和翻页抢点击）
+              // 中间正文区域仍可点一下显隐顶栏
+              if (el.closest("[data-page-turn]")) return;
+            }
             if (window.getSelection()?.toString().trim()) return;
+            // 点在左右热区已由 button 处理
+            if (el.closest("[data-page-turn]")) return;
             setSel(null);
+            // 仅点在中央 40% 区域时切换 chrome
+            const shell = el.closest("[data-reader]");
+            if (shell) {
+              const r = shell.getBoundingClientRect();
+              const x = e.clientX - r.left;
+              const ratio = x / r.width;
+              if (ratio < 0.28 || ratio > 0.72) return;
+            }
             setChromeVisible((v) => !v);
           }}
         >
@@ -559,11 +575,33 @@ function ReaderPage() {
               maxWidth={prefs.maxWidth}
               font={prefs.font}
               theme={prefs.theme}
+              layout={prefs.layout}
               highlights={localHighlights}
               publicThreads={supportsCommunity ? threads : []}
               onOpenThread={(q) => setThreadQuote(q)}
               onProgress={onProgress}
               onSelect={setSel}
+              onChapterNav={(dir) => {
+                if (dir === "next" && chapterIndex >= 0 && chapterIndex < chapters.length - 1) {
+                  const next = chapters[chapterIndex + 1];
+                  setChapterId(next.id);
+                  void navigate({
+                    to: "/read/$bookId",
+                    params: { bookId: book.id },
+                    search: { chapter: next.id },
+                    replace: true,
+                  });
+                } else if (dir === "prev" && chapterIndex > 0) {
+                  const prev = chapters[chapterIndex - 1];
+                  setChapterId(prev.id);
+                  void navigate({
+                    to: "/read/$bookId",
+                    params: { bookId: book.id },
+                    search: { chapter: prev.id },
+                    replace: true,
+                  });
+                }
+              }}
             />
           )}
           {!useText && book.format === "epub" && book.storageKey && (
@@ -856,6 +894,30 @@ function ReaderPage() {
                 </p>
               </div>
             )}
+
+            <div>
+              <p className="mb-2 text-xs text-fg-muted">阅读方式（Kindle 式）</p>
+              <div className="grid grid-cols-2 gap-2">
+                {READER_LAYOUT_META.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => updatePrefs({ layout: m.id })}
+                    className={cn(
+                      "rounded-[var(--radius-md)] border px-3 py-3 text-left",
+                      prefs.layout === m.id
+                        ? "border-accent bg-bg-subtle ring-1 ring-accent/40"
+                        : "border-border bg-bg-elevated",
+                    )}
+                  >
+                    <span className="block text-sm font-medium">{m.label}</span>
+                    <span className="mt-0.5 block text-[11px] text-fg-subtle">
+                      {m.hint}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div
               className={cn(
