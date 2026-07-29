@@ -81,10 +81,8 @@ export const Route = createFileRoute("/api/health")({
             detail: worker.detail,
           },
           tip: cfAuth
-            ? worker.ok
-              ? "登录走 Cloudflare D1。Worker 须配置 GROK_AUTH_CLIENT_ID/SECRET，否则 Google/X 会 Invalid redirect URI。"
-              : "已配置 Worker 登录但健康检查失败。"
-            : "Google/X 走主应用 OAuth（平台 GROK_AUTH）。Worker 仅用于 R2/AI（自动连）。D1 登录需 MODU_CF_API_SECRET 或 MODU_CF_AUTH_ON_WORKER=true。",
+            ? "登录反代到 Worker D1（需 Worker 上配置正式 GROK_AUTH，禁止 grok_preview）。"
+            : "Google/X 走主应用 OAuth（平台 GROK_AUTH）。若 URL 里仍是 client_id=grok_preview，说明前端未发布最新代码。",
         };
         return new Response(JSON.stringify(body, null, 2), {
           status: 200,
