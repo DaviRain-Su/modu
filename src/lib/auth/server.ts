@@ -101,10 +101,46 @@ const LOCAL_DEV_ORIGINS: string[] = [
   "http://127.0.0.1:8080",
   "http://[::1]:8080",
 ];
+
+// Vercel injects hostnames without scheme (e.g. my-app.vercel.app). Without
+// trusting them, deployed email/password hits "Invalid origin" and OAuth
+// redirect_uri is wrong when BETTER_AUTH_URL is missing.
+function vercelHosts(): string[] {
+  const hosts = new Set<string>();
+  const push = (raw?: string) => {
+    if (!raw) return;
+    const h = raw
+      .replace(/^https?:\/\//, "")
+      .replace(/\/$/, "")
+      .trim();
+    if (h) hosts.add(h);
+  };
+  push(env("VERCEL_URL"));
+  push(env("VERCEL_PROJECT_PRODUCTION_URL"));
+  push(env("VERCEL_BRANCH_URL"));
+  // Common platform wildcard (preview deployments)
+  hosts.add("*.vercel.app");
+  return [...hosts];
+}
+
+const deployHosts = vercelHosts();
+const deployOrigins = deployHosts.flatMap((host) => {
+  if (host.startsWith("*.")) {
+    return [`https://${host}`, `http://${host}`];
+  }
+  return [`https://${host}`];
+});
+
 const baseURL = explicitBaseURL ?? {
   // Include loopback hosts so dynamic baseURL resolves for local email/password
-  // (not only the preview wildcard).
-  allowedHosts: [...previewAllowedHosts, "localhost", "127.0.0.1", "[::1]"],
+  // (not only the preview wildcard). Also trust Vercel hosts when present.
+  allowedHosts: [
+    ...previewAllowedHosts,
+    ...deployHosts,
+    "localhost",
+    "127.0.0.1",
+    "[::1]",
+  ],
   // `auto` → trust both http:// and https:// expansions of allowedHosts
   // (preview is https; local dev is http).
   protocol: "auto" as const,
@@ -114,12 +150,17 @@ const baseURL = explicitBaseURL ?? {
 // Origins Better Auth accepts on credentialed POSTs (sign-up/sign-in, etc.).
 // Missing entries here surface as FORBIDDEN "Invalid origin".
 const trustedOrigins: string[] = explicitBaseURL
-  ? [explicitBaseURL, ...LOCAL_DEV_ORIGINS]
+  ? [explicitBaseURL, ...deployOrigins, ...LOCAL_DEV_ORIGINS]
   : [
       // Host wildcards (matched against Origin's host)
       ...previewAllowedHosts,
+      ...deployHosts,
       // Full-origin wildcards (matched against Origin)
-      ...previewAllowedHosts.flatMap((host) => [`https://${host}`, `http://${host}`]),
+      ...previewAllowedHosts.flatMap((host) => [
+        `https://${host}`,
+        `http://${host}`,
+      ]),
+      ...deployOrigins,
       ...LOCAL_DEV_ORIGINS,
     ];
 
@@ -231,23 +272,26 @@ export const auth = betterAuth({
     ...(grokOAuthPlugin ? [grokOAuthPlugin] : []),
 
     // Accept `Authorization: Bearer <session-token>` as an alternative to the
-    // cookie. Needed for the LIVE PREVIEW: the app runs in an embedded iframe
-    // where cookies are partitioned, so after popup sign-in it authenticates with
-    // a bearer token instead (see `client.ts` / the `auth` skill). The hook only
-    // fires when an Authorization header is present, so the cookie path
-    // (deployed apps) is unaffected.
+    // session cookie — required for the live-preview iframe, whose cookies are
+    // partitioned and never reach the parent app origin after a popup OAuth.
+    // The client stores the token (see `client.ts`) and attaches it on every
+    // `/api/auth/*` call; `getSessionUser` / `authMiddleware` also honor it.
     bearer(),
 
-    // Bridges Better Auth's Set-Cookie into TanStack Start responses. MUST be
-    // last so it runs after every other plugin's hooks.
+    // Must be last: bridges Better Auth's cookie mutations into TanStack Start's
+    // cookie store so Set-Cookie actually lands on the response.
     tanstackStartCookies(),
   ],
 });
 
-export function readSessionToken(): string | null {
-  return getCookie(SESSION_TOKEN_COOKIE) ?? null;
+/**
+ * Optional cookie-only session token read (for server code that needs the raw
+ * token). Prefer `getSessionUser()` / `authMiddleware` for identity.
+ */
+export function readSessionTokenCookie(): string | undefined {
+  try {
+    return getCookie(SESSION_TOKEN_COOKIE) || undefined;
+  } catch {
+    return undefined;
+  }
 }
-
-// Re-exported for convenience; the array lives in the dependency-free
-// `providers.ts` so the client can import it too.
-export { GROK_PROVIDERS } from "./providers";

@@ -1,13 +1,15 @@
 /**
  * Account-linked AI conversation archives (Cloudflare R2 layout).
  *
- * Key layout mirrors liber's user-scoped blobs:
- *   ai-chats/{userId}/{bookId}/{conversationId}.json
- *
- * Preview: IndexedDB. Production: same keys under R2 when VITE_R2_PUBLIC_URL is set.
+ * Key: ai-chats/{userId}/{bookId}/{conversationId}.json
+ * Preview: IndexedDB. With MODU_CF_API_* : also mirrors to Worker R2.
  */
 
 import { idbGetObject, idbPutObject } from "./idb";
+import {
+  cfWorkerPutObject,
+  cloudflareWorkerConfigured,
+} from "@/lib/cloudflare/worker-client";
 
 export type ChatArchiveMessage = {
   id: string;
@@ -42,9 +44,8 @@ export async function putChatArchive(archive: ChatArchive): Promise<{ key: strin
     bookId: archive.bookId,
     conversationId: archive.conversationId,
   });
-  const blob = new Blob([JSON.stringify(archive, null, 2)], {
-    type: "application/json",
-  });
+  const json = JSON.stringify(archive, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
   await idbPutObject({
     key,
     blob,
@@ -52,6 +53,19 @@ export async function putChatArchive(archive: ChatArchive): Promise<{ key: strin
     size: blob.size,
     updatedAt: Date.now(),
   });
+
+  if (cloudflareWorkerConfigured()) {
+    try {
+      await cfWorkerPutObject({
+        key,
+        data: json,
+        contentType: "application/json",
+      });
+    } catch (e) {
+      console.warn("[chat-archive] CF mirror failed", e);
+    }
+  }
+
   return { key };
 }
 

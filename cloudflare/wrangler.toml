@@ -1,0 +1,32 @@
+# 墨读 · Cloudflare Worker（本地：npx wrangler dev）
+# 文档见 cloudflare/README.md
+
+name = "modu-api"
+main = "src/index.ts"
+compatibility_date = "2026-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ── 绑定：在 Cloudflare 控制台创建同名资源，或本地用下方模拟 ──
+
+[[r2_buckets]]
+binding = "BOOKS"
+bucket_name = "modu-books"
+preview_bucket_name = "modu-books-preview"
+
+[ai]
+binding = "AI"
+
+# 可选 D1（会话/业务若迁到 CF 再用）
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "modu"
+# database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+[vars]
+# 逗号分隔；本地预览与正式前端 origin
+ALLOWED_ORIGINS = "http://localhost:8080,http://127.0.0.1:8080"
+AI_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8"
+
+# 密钥请用：npx wrangler secret put MODU_API_SECRET
+# 本地可在 cloudflare/.dev.vars 写入（勿提交）：
+#   MODU_API_SECRET=dev-secret-change-me

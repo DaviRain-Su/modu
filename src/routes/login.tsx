@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { BookOpen, Loader2 } from "lucide-react";
+import { AlertTriangle, BookOpen, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GoogleIcon, MailIcon, XIcon } from "@/components/auth/SocialIcons";
 import {
   GROK_PROVIDERS,
   authClient,
@@ -13,10 +14,29 @@ import {
 } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { ensureMyProfile } from "@/lib/server/profile";
+import { getSystemStatus } from "@/lib/server/system-status";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
+
+function providerIcon(providerId: string) {
+  if (providerId.includes("google")) {
+    return <GoogleIcon className="h-5 w-5 shrink-0" />;
+  }
+  if (providerId.includes("x") || providerId.includes("twitter")) {
+    return <XIcon className="h-4 w-4 shrink-0" />;
+  }
+  return null;
+}
+
+function providerLabel(providerId: string, fallback: string) {
+  if (providerId.includes("google")) return "使用 Google 继续";
+  if (providerId.includes("x") || providerId.includes("twitter"))
+    return "使用 X 继续";
+  return `使用 ${fallback} 继续`;
+}
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -26,6 +46,10 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState<string | null>(null);
+  const [status, setStatus] = useState<Awaited<
+    ReturnType<typeof getSystemStatus>
+  > | null>(null);
 
   useEffect(() => {
     if (!isPending && user) {
@@ -33,18 +57,60 @@ function LoginPage() {
     }
   }, [user, isPending, navigate]);
 
+  useEffect(() => {
+    void getSystemStatus()
+      .then(setStatus)
+      .catch(() => setStatus(null));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const err = new URLSearchParams(window.location.search).get("error");
+    if (err === "oauth") {
+      toast.error("社交登录未完成，请重试或改用邮箱");
+    }
+  }, []);
+
   async function afterAuth() {
     try {
       await ensureMyProfile();
     } catch {
-      /* profile will be created later */
+      /* profile created lazily */
     }
     void navigate({ to: "/account" });
   }
 
+  async function onSocial(providerId: string) {
+    if (oauthBusy || busy) return;
+    setOauthBusy(providerId);
+    try {
+      await signIn(providerId, {
+        callbackURL: "/account",
+        errorCallbackURL: "/login?error=oauth",
+      });
+      try {
+        await authClient.getSession();
+      } catch {
+        /* ignore */
+      }
+      await afterAuth();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "登录失败";
+      if (/pop-up|popup|blocked/i.test(msg)) {
+        toast.error("浏览器拦截了登录弹窗，请允许弹窗后重试");
+      } else if (/cancel/i.test(msg)) {
+        toast.message("已取消登录");
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      setOauthBusy(null);
+    }
+  }
+
   async function onEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || oauthBusy) return;
     setBusy(true);
     try {
       if (mode === "signup") {
@@ -65,11 +131,34 @@ function LoginPage() {
       }
       await afterAuth();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "操作失败");
+      const msg = err instanceof Error ? err.message : "操作失败";
+      if (/invalid origin|forbidden/i.test(msg)) {
+        toast.error(
+          "登录被拒绝（Invalid origin）。正式站请设置 BETTER_AUTH_URL 为当前网站地址。",
+        );
+      } else if (/failed to fetch|network/i.test(msg)) {
+        toast.error("无法连接登录服务，请检查网络后重试");
+      } else if (
+        status &&
+        !status.persistentDatabase &&
+        /invalid|credential|password|user/i.test(msg)
+      ) {
+        toast.error(
+          `${msg}（提示：未接持久数据库时，正式环境账号可能无法保存）`,
+        );
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setBusy(false);
     }
   }
+
+  const showDeployWarning =
+    status &&
+    (!status.persistentDatabase ||
+      !status.grokAuthCustom ||
+      !status.cloudflareWorker.configured);
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center py-8">
@@ -81,12 +170,26 @@ function LoginPage() {
           登录墨读
         </h1>
         <p className="mt-2 text-sm text-fg-muted">
-          同步书架进度、公开批注、配置 AI 与订阅
+          Google · X · 邮箱 —— 同步书架、批注与 AI 档案
         </p>
       </div>
 
+      {showDeployWarning ? (
+        <div className="mb-4 rounded-[var(--radius-lg)] border border-border bg-bg-subtle/80 px-3 py-3 text-xs leading-relaxed text-fg-muted">
+          <div className="mb-1.5 flex items-center gap-1.5 font-medium text-fg">
+            <AlertTriangle className="h-3.5 w-3.5 text-accent" />
+            运行环境提示
+          </div>
+          <ul className="space-y-1">
+            {status.notes.slice(0, 3).map((n) => (
+              <li key={n}>· {n}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="text-base">
             {mode === "signin" ? "欢迎回来" : "创建账户"}
           </CardTitle>
@@ -94,20 +197,29 @@ function LoginPage() {
         <CardContent className="space-y-5">
           {authEnabled ? (
             <>
-              <div className="grid gap-2">
-                {GROK_PROVIDERS.map((p) => (
-                  <Button
-                    key={p.providerId}
-                    type="button"
-                    variant="secondary"
-                    className="w-full"
-                    onClick={() =>
-                      void signIn(p.providerId, { callbackURL: "/account" })
-                    }
-                  >
-                    使用 {p.label} 继续
-                  </Button>
-                ))}
+              <div className="grid gap-2.5">
+                {GROK_PROVIDERS.map((p) => {
+                  const loading = oauthBusy === p.providerId;
+                  return (
+                    <button
+                      key={p.providerId}
+                      type="button"
+                      disabled={Boolean(oauthBusy) || busy}
+                      onClick={() => void onSocial(p.providerId)}
+                      className={cn(
+                        "flex h-12 w-full items-center justify-center gap-3 rounded-[var(--radius-lg)] border border-border bg-bg px-4 text-sm font-medium transition-colors",
+                        "hover:bg-bg-subtle disabled:opacity-50",
+                      )}
+                    >
+                      {loading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        providerIcon(p.providerId)
+                      )}
+                      <span>{providerLabel(p.providerId, p.label)}</span>
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="relative py-1 text-center text-xs text-fg-subtle">
@@ -117,7 +229,10 @@ function LoginPage() {
                 <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
               </div>
 
-              <form className="space-y-3" onSubmit={(e) => void onEmailSubmit(e)}>
+              <form
+                className="space-y-3"
+                onSubmit={(e) => void onEmailSubmit(e)}
+              >
                 {mode === "signup" && (
                   <div className="space-y-1.5">
                     <label className="text-xs text-fg-muted">昵称</label>
@@ -154,13 +269,18 @@ function LoginPage() {
                     }
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={busy}>
+                <Button
+                  type="submit"
+                  className="h-12 w-full"
+                  disabled={busy || Boolean(oauthBusy)}
+                >
                   {busy ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : mode === "signin" ? (
-                    "登录"
                   ) : (
-                    "注册"
+                    <>
+                      <MailIcon className="h-4 w-4" />
+                      {mode === "signin" ? "邮箱登录" : "邮箱注册"}
+                    </>
                   )}
                 </Button>
               </form>
@@ -190,18 +310,27 @@ function LoginPage() {
                   </>
                 )}
               </p>
+
+              <p className="text-center text-[11px] leading-relaxed text-fg-subtle">
+                支持 Google、X 与邮箱密码登录。Google / X
+                经安全中介完成授权；邮箱保存在本站数据库。
+              </p>
             </>
           ) : (
-            <p className="text-sm text-fg-muted">当前环境已关闭登录。</p>
+            <p className="text-sm text-fg-muted">当前已关闭登录功能。</p>
           )}
-
-          <p className="text-center text-xs text-fg-subtle">
-            <Link to="/" className="hover:text-fg">
-              返回首页
-            </Link>
-          </p>
         </CardContent>
       </Card>
+
+      <p className="mt-6 text-center text-xs text-fg-subtle">
+        <Link to="/" className="hover:text-fg">
+          返回首页
+        </Link>
+        {" · "}
+        <a href="/api/health" className="hover:text-fg">
+          系统状态
+        </a>
+      </p>
     </div>
   );
 }

@@ -1,13 +1,11 @@
 /**
  * Pi-powered LLM gateway (inspired by liber + @earendil-works/pi-ai).
  *
- * - Uses pi-ai Models / createProvider for OpenAI-compatible backends.
- * - Falls back to local rule-based assist when no remote model is available.
- *
- * Official platform path (when env is set on the host):
- *   CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_KEY
- *   optional AI_GATEWAY_ID → Cloudflare AI Gateway compat endpoint
- *   optional AI_MODEL
+ * Priority for official channel:
+ *   1. Independent Cloudflare Worker (MODU_CF_API_URL) — Workers AI binding
+ *   2. Cloudflare REST / AI Gateway via Pi (CLOUDFLARE_ACCOUNT_ID + key)
+ *   3. User BYOK via Pi OpenAI-compat
+ *   4. Local rule-based assist
  */
 
 import {
@@ -22,6 +20,10 @@ import {
 } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { runAiAssist, type AiAction } from "@/lib/ai/assist";
+import {
+  cfWorkerAiChat,
+  cloudflareWorkerConfigured,
+} from "@/lib/cloudflare/worker-client";
 
 export type PiChatMessage = {
   role: "user" | "assistant";
@@ -206,13 +208,14 @@ async function completeViaPi(opts: {
 
 export async function piCompanionChat(req: PiChatRequest): Promise<{
   content: string;
-  via: "pi" | "local";
+  via: "pi" | "local" | "cf-worker";
   provider: string;
   model?: string;
 }> {
   const userText = buildUserTurn(req);
   const history = (req.history ?? []).slice(-16);
 
+  // User BYOK
   if (req.provider !== "official" && req.apiKey && req.baseUrl) {
     const modelId = req.model || "gpt-4o-mini";
     try {
@@ -236,6 +239,33 @@ export async function piCompanionChat(req: PiChatRequest): Promise<{
     }
   }
 
+  // Official: dedicated CF Worker first (your local wrangler deploy)
+  if (
+    (req.provider === "official" || req.provider === "cloudflare") &&
+    cloudflareWorkerConfigured()
+  ) {
+    try {
+      const messages = [
+        ...history.map((h) => ({ role: h.role, content: h.content })),
+        { role: "user" as const, content: userText },
+      ];
+      const { text, model } = await cfWorkerAiChat({
+        messages,
+        system: SYSTEM,
+        model: req.model,
+      });
+      return {
+        content: text,
+        via: "cf-worker",
+        provider: "cloudflare-worker",
+        model,
+      };
+    } catch (e) {
+      console.warn("[pi-gateway] cf worker failed", e);
+    }
+  }
+
+  // Official: Pi → CF REST / Gateway
   const cf = platformCloudflareConfig();
   if (cf && (req.provider === "official" || req.provider === "cloudflare")) {
     try {
@@ -255,7 +285,7 @@ export async function piCompanionChat(req: PiChatRequest): Promise<{
         model: req.model || cf.model,
       };
     } catch (e) {
-      console.warn("[pi-gateway] cloudflare failed", e);
+      console.warn("[pi-gateway] cloudflare rest failed", e);
     }
   }
 

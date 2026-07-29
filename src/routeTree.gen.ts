@@ -16,6 +16,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as RankingsRouteImport } from './routes/rankings'
 import { Route as ShelfRouteImport } from './routes/shelf'
 import { Route as UploadRouteImport } from './routes/upload'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as BookBookIdRouteImport } from './routes/book.$bookId'
 import { Route as ReadBookIdRouteImport } from './routes/read.$bookId'
 import { Route as UUserIdRouteImport } from './routes/u.$userId'
@@ -56,6 +57,11 @@ const UploadRoute = UploadRouteImport.update({
   path: '/upload',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BookBookIdRoute = BookBookIdRouteImport.update({
   id: '/book/$bookId',
   path: '/book/$bookId',
@@ -85,6 +91,7 @@ export interface FileRoutesByFullPath {
   '/rankings': typeof RankingsRoute
   '/shelf': typeof ShelfRoute
   '/upload': typeof UploadRoute
+  '/api/health': typeof ApiHealthRoute
   '/book/$bookId': typeof BookBookIdRoute
   '/read/$bookId': typeof ReadBookIdRoute
   '/u/$userId': typeof UUserIdRoute
@@ -98,6 +105,7 @@ export interface FileRoutesByTo {
   '/rankings': typeof RankingsRoute
   '/shelf': typeof ShelfRoute
   '/upload': typeof UploadRoute
+  '/api/health': typeof ApiHealthRoute
   '/book/$bookId': typeof BookBookIdRoute
   '/read/$bookId': typeof ReadBookIdRoute
   '/u/$userId': typeof UUserIdRoute
@@ -112,6 +120,7 @@ export interface FileRoutesById {
   '/rankings': typeof RankingsRoute
   '/shelf': typeof ShelfRoute
   '/upload': typeof UploadRoute
+  '/api/health': typeof ApiHealthRoute
   '/book/$bookId': typeof BookBookIdRoute
   '/read/$bookId': typeof ReadBookIdRoute
   '/u/$userId': typeof UUserIdRoute
@@ -127,6 +136,7 @@ export interface FileRouteTypes {
     | '/rankings'
     | '/shelf'
     | '/upload'
+    | '/api/health'
     | '/book/$bookId'
     | '/read/$bookId'
     | '/u/$userId'
@@ -140,6 +150,7 @@ export interface FileRouteTypes {
     | '/rankings'
     | '/shelf'
     | '/upload'
+    | '/api/health'
     | '/book/$bookId'
     | '/read/$bookId'
     | '/u/$userId'
@@ -153,6 +164,7 @@ export interface FileRouteTypes {
     | '/rankings'
     | '/shelf'
     | '/upload'
+    | '/api/health'
     | '/book/$bookId'
     | '/read/$bookId'
     | '/u/$userId'
@@ -167,6 +179,7 @@ export interface RootRouteChildren {
   RankingsRoute: typeof RankingsRoute
   ShelfRoute: typeof ShelfRoute
   UploadRoute: typeof UploadRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   BookBookIdRoute: typeof BookBookIdRoute
   ReadBookIdRoute: typeof ReadBookIdRoute
   UUserIdRoute: typeof UUserIdRoute
@@ -224,6 +237,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UploadRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/book/$bookId': {
       id: '/book/$bookId'
       path: '/book/$bookId'
@@ -263,6 +283,7 @@ const rootRouteChildren: RootRouteChildren = {
   RankingsRoute: RankingsRoute,
   ShelfRoute: ShelfRoute,
   UploadRoute: UploadRoute,
+  ApiHealthRoute: ApiHealthRoute,
   BookBookIdRoute: BookBookIdRoute,
   ReadBookIdRoute: ReadBookIdRoute,
   UUserIdRoute: UUserIdRoute,

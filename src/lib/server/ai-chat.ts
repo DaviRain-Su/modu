@@ -139,7 +139,6 @@ export const runUserAi = createServerFn({ method: "POST" })
     const plan = sub[0]?.plan ?? "free";
     const day = new Date().toISOString().slice(0, 10);
 
-    // Ensure profile-related rows exist for FK-ish integrity
     await sql`
       insert into user_ai_settings (user_id, provider)
       values (${context.userId}, 'official')
@@ -230,7 +229,9 @@ export const runUserAi = createServerFn({ method: "POST" })
     let content = result.content;
     if (result.via === "local" && provider === "official") {
       content +=
-        "\n\n（官方通道：当前环境未配置 Cloudflare Workers AI / AI Gateway 密钥时使用本地伴读；部署后可接 CF + Pi。）";
+        "\n\n（官方通道：配置 Cloudflare Worker 或 CF AI 密钥后将使用云端模型；当前为本地伴读。）";
+    } else if (result.via === "cf-worker") {
+      content += `\n\n（Cloudflare Worker · ${result.model || "Workers AI"}）`;
     } else if (result.via === "pi") {
       content += `\n\n（Pi · ${result.provider}${result.model ? ` / ${result.model}` : ""}）`;
     }
@@ -256,7 +257,7 @@ export const runUserAi = createServerFn({ method: "POST" })
       conversationId,
       bookId: data.bookId,
       title: titleSeed,
-      engine: `pi:${result.via}:${result.provider}`,
+      engine: `${result.via}:${result.provider}`,
     });
 
     const remaining =
