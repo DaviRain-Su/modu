@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { MARKET_BOOKS } from "@/lib/books/catalog";
 import type { Book, ReadingProgress } from "@/lib/books/types";
+import { parseUploadedBook } from "@/lib/books/parse-upload";
 import {
   idbDeleteBookMeta,
   idbGetProgress,
@@ -39,7 +40,11 @@ interface LibraryState {
   addToShelf: (bookId: string) => void;
   removeFromShelf: (bookId: string) => Promise<void>;
   isOnShelf: (bookId: string) => boolean;
-  uploadBook: (file: File, meta?: { title?: string; author?: string }) => Promise<Book>;
+  uploadBook: (
+    file: File,
+    meta?: { title?: string; author?: string },
+    onPhase?: (phase: string) => void,
+  ) => Promise<Book>;
   getBook: (id: string) => Book | undefined;
   allBooks: () => Book[];
   shelfBooks: () => Book[];
@@ -61,7 +66,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const map: Record<string, ReadingProgress> = {};
       for (const p of progresses) map[p.bookId] = p;
       const shelfIds = loadShelfIds();
-      // Ensure market books that were added stay; drop orphan ids except uploads
       const valid = new Set([
         ...MARKET_BOOKS.map((b) => b.id),
         ...uploaded.map((b) => b.id),
@@ -105,58 +109,83 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   isOnShelf: (bookId) => get().shelfIds.includes(bookId),
 
-  uploadBook: async (file, meta) => {
-    const ext = file.name.split(".").pop()?.toLowerCase();
-    const format =
-      ext === "pdf" ? "pdf" : ext === "epub" ? "epub" : ("text" as const);
-    if (format === "text" && ext !== "txt" && ext !== "md") {
-      throw new Error("仅支持 PDF、EPUB，或 TXT/MD 文本");
-    }
+  uploadBook: async (file, meta, onPhase) => {
+    onPhase?.("parsing");
+    const parsed = await parseUploadedBook(file);
 
     const id = uid("upload");
-    const baseTitle = meta?.title || file.name.replace(/\.[^.]+$/, "");
+    const baseTitle =
+      meta?.title?.trim() ||
+      parsed.title ||
+      file.name.replace(/\.[^.]+$/, "");
+    const author =
+      meta?.author?.trim() || parsed.author || "我的上传";
+
+    onPhase?.("storing");
     const { key } = await putBookFile({
       owner: OWNER,
       bookId: id,
       fileName: file.name,
       blob: file,
-      contentType: file.type,
+      contentType: parsed.contentType || file.type,
     });
 
-    let chapters = undefined;
-    if (format === "text") {
-      const text = await file.text();
-      chapters = [
-        {
-          id: `${id}_c1`,
-          title: "全文",
-          content: text,
-        },
-      ];
-    }
+    // Text format always uses parsed chapters; PDF/EPUB keep binary + optional TOC
+    const chapters =
+      parsed.format === "text"
+        ? parsed.chapters
+        : parsed.format === "epub" && parsed.chapters?.length
+          ? // EPUB: keep titles for TOC; content optional (EpubReader uses binary)
+            parsed.chapters.map((c) => ({
+              ...c,
+              content: c.content?.slice(0, 500) || "",
+            }))
+          : parsed.format === "pdf" && parsed.pageCount
+            ? undefined // PdfReader uses page numbers
+            : parsed.chapters;
+
+    const descBits = [
+      `本地上传 · ${file.name}`,
+      parsed.pageCount
+        ? parsed.format === "pdf"
+          ? `${parsed.pageCount} 页`
+          : `${parsed.pageCount} 章`
+        : null,
+      parsed.previewText
+        ? parsed.previewText.replace(/\s+/g, " ").slice(0, 120) + "…"
+        : null,
+    ].filter(Boolean);
 
     const book: Book = {
       id,
       title: baseTitle,
-      author: meta?.author || "我的上传",
-      description: `本地上传 · ${file.name}`,
-      coverColor: format === "pdf" ? "#3a2820" : format === "epub" ? "#1e2f38" : "#2a2a28",
-      coverText: format.toUpperCase(),
+      author,
+      description: descBits.join(" · "),
+      coverColor:
+        parsed.format === "pdf"
+          ? "#3a2820"
+          : parsed.format === "epub"
+            ? "#1e2f38"
+            : "#2a2a28",
+      coverText: parsed.format.toUpperCase(),
       category: "生活",
-      format,
+      format: parsed.format,
       source: "upload",
-      tags: ["上传", format.toUpperCase()],
+      tags: ["上传", parsed.format.toUpperCase()],
       rating: 5,
       readers: 1,
-      wordCount: Math.round(file.size / 2),
+      wordCount: parsed.wordCount ?? Math.round(file.size / 2),
       storageKey: key,
       fileName: file.name,
       fileSize: file.size,
+      pageCount: parsed.pageCount,
+      previewText: parsed.previewText,
       chapters,
       createdAt: Date.now(),
       progress: 0,
     };
 
+    onPhase?.("indexing");
     await idbSaveBookMeta(id, book);
     const shelfIds = [id, ...get().shelfIds.filter((x) => x !== id)];
     saveShelfIds(shelfIds);

@@ -1,6 +1,12 @@
 import { useCallback, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Cloud, FileUp, Loader2 } from "lucide-react";
+import {
+  BookOpen,
+  CheckCircle2,
+  Cloud,
+  FileUp,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,11 +14,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useLibraryStore } from "@/lib/store/library";
 import { describeStorage } from "@/lib/storage/r2";
+import { assertUploadable, detectFormat } from "@/lib/books/parse-upload";
 import { formatBytes } from "@/lib/utils";
 
 export const Route = createFileRoute("/upload")({
   component: UploadPage,
 });
+
+const PHASE_LABEL: Record<string, string> = {
+  parsing: "正在解析图书结构…",
+  storing: "正在写入存储…",
+  indexing: "正在加入书架…",
+};
 
 function UploadPage() {
   const navigate = useNavigate();
@@ -22,50 +35,88 @@ function UploadPage() {
   const [author, setAuthor] = useState("");
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<string | null>(null);
   const storage = describeStorage();
 
   const onFile = useCallback((f: File | null) => {
     if (!f) return;
-    const ext = f.name.split(".").pop()?.toLowerCase();
-    if (!ext || !["pdf", "epub", "txt", "md"].includes(ext)) {
-      toast.error("请上传 PDF、EPUB 或 TXT/MD 文件");
+    try {
+      assertUploadable(f);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "文件不支持");
       return;
     }
     setFile(f);
     setTitle((t) => t || f.name.replace(/\.[^.]+$/, ""));
+    const fmt = detectFormat(f);
+    if (fmt === "pdf") toast.message("已选择 PDF，上传后将解析页数与正文");
+    if (fmt === "epub") toast.message("已选择 EPUB，上传后将解析目录与元数据");
   }, []);
 
   async function handleUpload() {
     if (!file || busy) return;
     setBusy(true);
+    setPhase("parsing");
     try {
-      const book = await uploadBook(file, {
-        title: title.trim() || undefined,
-        author: author.trim() || undefined,
-      });
-      toast.success("已上传并加入书架");
-      void navigate({ to: "/book/$bookId", params: { bookId: book.id } });
+      const book = await uploadBook(
+        file,
+        {
+          title: title.trim() || undefined,
+          author: author.trim() || undefined,
+        },
+        (p) => setPhase(p),
+      );
+      toast.success(
+        book.format === "pdf"
+          ? `PDF 已就绪${book.pageCount ? ` · ${book.pageCount} 页` : ""}`
+          : book.format === "epub"
+            ? `EPUB 已就绪${book.chapters?.length ? ` · ${book.chapters.length} 章` : ""}`
+            : "文本已解析并加入书架",
+      );
+      void navigate({ to: "/read/$bookId", params: { bookId: book.id } });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "上传失败");
     } finally {
       setBusy(false);
+      setPhase(null);
     }
   }
+
+  const fmt = file ? detectFormat(file) : null;
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <h1 className="font-serif text-3xl font-medium tracking-tight">上传图书</h1>
+        <h1 className="font-serif text-3xl font-medium tracking-tight">
+          上传图书
+        </h1>
         <p className="mt-1 text-fg-muted">
-          支持 PDF、EPUB，以及纯文本。文件写入对象存储层。
+          支持 <strong className="text-fg">PDF</strong>、
+          <strong className="text-fg">EPUB</strong> 与 TXT/MD。上传后自动解析，可直接阅读。
         </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          { t: "PDF", d: "分页渲染 · 抽文本 · AI 伴读" },
+          { t: "EPUB", d: "目录解析 · 翻页 · 主题字号" },
+          { t: "TXT/MD", d: "自动分章 · 全文阅读" },
+        ].map((x) => (
+          <div
+            key={x.t}
+            className="rounded-[var(--radius-lg)] border border-border bg-bg-elevated px-3 py-3"
+          >
+            <p className="text-sm font-medium">{x.t}</p>
+            <p className="mt-1 text-xs text-fg-muted">{x.d}</p>
+          </div>
+        ))}
       </div>
 
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
             <Cloud className="h-4 w-4 text-accent" />
-            <CardTitle className="text-base">存储后端</CardTitle>
+            <CardTitle className="text-base">存储</CardTitle>
           </div>
           <div className="mt-2 flex flex-wrap items-start gap-2 text-sm text-fg-muted">
             <Badge variant="accent">{storage.label}</Badge>
@@ -96,12 +147,12 @@ function UploadPage() {
             </div>
             <p className="text-sm font-medium">拖拽文件到此处，或点击选择</p>
             <p className="mt-1 text-xs text-fg-subtle">
-              PDF · EPUB · TXT · MD，建议 50MB 以内
+              PDF · EPUB · TXT · MD，最大 80MB
             </p>
             <label className="mt-4">
               <input
                 type="file"
-                accept=".pdf,.epub,.txt,.md,application/pdf,application/epub+zip,text/plain,text/markdown"
+                accept=".pdf,.epub,.txt,.md,.markdown,application/pdf,application/epub+zip,text/plain,text/markdown"
                 className="sr-only"
                 onChange={(e) => onFile(e.target.files?.[0] ?? null)}
               />
@@ -110,20 +161,27 @@ function UploadPage() {
               </span>
             </label>
             {file && (
-              <p className="mt-4 text-sm text-fg-muted">
-                已选：{file.name}
-                <span className="text-fg-subtle"> · {formatBytes(file.size)}</span>
-              </p>
+              <div className="mt-4 flex items-center gap-2 text-sm text-fg-muted">
+                <CheckCircle2 className="h-4 w-4 text-accent" />
+                <span>
+                  {file.name}
+                  <span className="text-fg-subtle">
+                    {" "}
+                    · {formatBytes(file.size)}
+                    {fmt ? ` · ${fmt.toUpperCase()}` : ""}
+                  </span>
+                </span>
+              </div>
             )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <label className="text-xs text-fg-muted">书名</label>
+              <label className="text-xs text-fg-muted">书名（可覆盖自动识别）</label>
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="可选，默认使用文件名"
+                placeholder="默认文件名 / EPUB 元数据"
               />
             </div>
             <div className="space-y-1.5">
@@ -145,10 +203,13 @@ function UploadPage() {
             {busy ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                上传中…
+                {phase ? PHASE_LABEL[phase] || "处理中…" : "处理中…"}
               </>
             ) : (
-              "上传并加入书架"
+              <>
+                <BookOpen className="h-4 w-4" />
+                解析并开始阅读
+              </>
             )}
           </Button>
         </CardContent>

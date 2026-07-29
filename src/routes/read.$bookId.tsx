@@ -73,6 +73,7 @@ function ReaderPage() {
   const [tocOpen, setTocOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedText, setSelectedText] = useState("");
+  const [pageContext, setPageContext] = useState("");
   const [progress, setProgress] = useState(stored?.progress ?? 0);
   const [page, setPage] = useState(stored?.lastPage ?? 1);
 
@@ -130,6 +131,9 @@ function ReaderPage() {
     setAiOpen(true);
   }, []);
 
+  // Prefer selection; fall back to current page/chapter text for AI
+  const aiContextText = selectedText || pageContext || chapter?.content?.slice(0, 1500) || book?.previewText || "";
+
   if (ready && !book) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center bg-bg px-6 text-center">
@@ -150,6 +154,7 @@ function ReaderPage() {
   }
 
   const chapterIndex = chapters.findIndex((c) => c.id === chapter?.id);
+  const showToc = chapters.length > 0 || book.format === "epub";
 
   return (
     <div className="relative flex h-dvh flex-col bg-bg text-fg">
@@ -172,10 +177,12 @@ function ReaderPage() {
             <div className="min-w-0 flex-1 px-1">
               <p className="truncate text-sm font-medium">{book.title}</p>
               <p className="truncate text-[11px] text-fg-subtle">
-                {chapter?.title || book.format.toUpperCase()}
+                {book.format === "pdf"
+                  ? `PDF · 第 ${page} 页`
+                  : chapter?.title || book.format.toUpperCase()}
               </p>
             </div>
-            {chapters.length > 0 && (
+            {showToc && (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -233,7 +240,7 @@ function ReaderPage() {
           onClick={(e) => {
             if (
               (e.target as HTMLElement).closest(
-                "button, a, input, textarea, canvas, iframe",
+                "button, a, input, textarea, canvas, iframe, [data-text-layer]",
               )
             )
               return;
@@ -259,6 +266,7 @@ function ReaderPage() {
               onProgress={onProgress}
               onPageChange={setPage}
               onSelectText={onSelectText}
+              onPageText={setPageContext}
             />
           )}
           {book.format === "epub" && book.storageKey && (
@@ -283,8 +291,10 @@ function ReaderPage() {
               bookId={book.id}
               bookTitle={book.title}
               chapterId={chapter?.id}
-              selectedText={selectedText}
-              onClearSelection={() => setSelectedText("")}
+              selectedText={aiContextText}
+              onClearSelection={() => {
+                setSelectedText("");
+              }}
               className="h-full"
             />
           </aside>
@@ -347,7 +357,7 @@ function ReaderPage() {
               bookId={book.id}
               bookTitle={book.title}
               chapterId={chapter?.id}
-              selectedText={selectedText}
+              selectedText={aiContextText}
               onClearSelection={() => setSelectedText("")}
               className="h-full rounded-t-[var(--radius-xl)]"
             />
@@ -362,32 +372,66 @@ function ReaderPage() {
             <p className="text-xs text-fg-subtle">{book.title}</p>
           </SheetHeader>
           <div className="overflow-y-auto p-2">
-            {chapters.map((ch, i) => (
-              <button
-                key={ch.id}
-                type="button"
-                className={cn(
-                  "flex w-full items-start gap-3 rounded-[var(--radius-md)] px-3 py-3 text-left text-sm transition-colors hover:bg-bg-subtle",
-                  ch.id === chapter?.id && "bg-bg-subtle",
-                )}
-                onClick={() => {
-                  setChapterId(ch.id);
-                  setTocOpen(false);
-                  void navigate({
-                    to: "/read/$bookId",
-                    params: { bookId: book.id },
-                    search: { chapter: ch.id },
-                    replace: true,
-                  });
-                }}
-              >
-                <span className="w-6 shrink-0 text-fg-subtle">{i + 1}</span>
-                <span>{ch.title}</span>
-              </button>
-            ))}
-            {chapters.length === 0 && (
+            {book.format === "pdf" && book.pageCount ? (
+              // Jump list every ~10 pages + first/last
+              Array.from(
+                { length: Math.min(book.pageCount, 100) },
+                (_, i) => i + 1,
+              )
+                .filter(
+                  (p) =>
+                    p === 1 ||
+                    p === book.pageCount ||
+                    p % Math.max(1, Math.ceil((book.pageCount || 1) / 20)) === 0,
+                )
+                .map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className={cn(
+                      "flex w-full items-start gap-3 rounded-[var(--radius-md)] px-3 py-3 text-left text-sm transition-colors hover:bg-bg-subtle",
+                      p === page && "bg-bg-subtle",
+                    )}
+                    onClick={() => {
+                      setPage(p);
+                      setTocOpen(false);
+                    }}
+                  >
+                    <span className="w-10 shrink-0 text-fg-subtle">p.{p}</span>
+                    <span>第 {p} 页</span>
+                  </button>
+                ))
+            ) : chapters.length > 0 ? (
+              chapters.map((ch, i) => (
+                <button
+                  key={ch.id}
+                  type="button"
+                  className={cn(
+                    "flex w-full items-start gap-3 rounded-[var(--radius-md)] px-3 py-3 text-left text-sm transition-colors hover:bg-bg-subtle",
+                    ch.id === chapter?.id && "bg-bg-subtle",
+                  )}
+                  onClick={() => {
+                    setChapterId(ch.id);
+                    setTocOpen(false);
+                    if (book.format === "text") {
+                      void navigate({
+                        to: "/read/$bookId",
+                        params: { bookId: book.id },
+                        search: { chapter: ch.id },
+                        replace: true,
+                      });
+                    }
+                  }}
+                >
+                  <span className="w-6 shrink-0 text-fg-subtle">{i + 1}</span>
+                  <span>{ch.title}</span>
+                </button>
+              ))
+            ) : (
               <p className="px-3 py-6 text-sm text-fg-muted">
-                当前格式使用翻页浏览，无章节目录。
+                {book.format === "epub"
+                  ? "目录将在打开 EPUB 后从书籍导航加载；请用底部翻页阅读。"
+                  : "当前格式使用翻页浏览。"}
               </p>
             )}
           </div>

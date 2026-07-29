@@ -41,6 +41,12 @@ function providerLabel(providerId: string, fallback: string) {
   return `使用 ${fallback} 继续`;
 }
 
+function providerShort(providerId: string) {
+  if (providerId.includes("google")) return "Google";
+  if (providerId.includes("x") || providerId.includes("twitter")) return "X";
+  return "社交账号";
+}
+
 function LoginPage() {
   const navigate = useNavigate();
   const { user, isPending } = useCurrentUserState();
@@ -68,14 +74,16 @@ function LoginPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const err = new URLSearchParams(window.location.search).get("error");
-    if (err === "oauth") {
-      toast.error("社交登录未完成，请重试或改用邮箱");
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("error");
+    if (err === "oauth" || err === "access_denied") {
+      toast.error(
+        "社交登录未完成。请重试；若反复失败，可先用邮箱注册登录。",
+      );
     }
   }, []);
 
   async function afterAuth() {
-    // Ensure session is warm before profile / navigation.
     try {
       await authClient.getSession();
     } catch {
@@ -84,9 +92,8 @@ function LoginPage() {
     try {
       await ensureMyProfile();
     } catch {
-      /* profile created lazily — not a login blocker */
+      /* profile created lazily */
     }
-    // Full navigation so the session store remounts cleanly with bearer/cookie.
     if (typeof window !== "undefined") {
       window.location.assign("/account");
       return;
@@ -97,23 +104,29 @@ function LoginPage() {
   async function onSocial(providerId: string) {
     if (oauthBusy || busy) return;
     setOauthBusy(providerId);
+    const label = providerShort(providerId);
+    toast.loading(`正在前往 ${label} 登录…`, { id: "oauth" });
     try {
       await signIn(providerId, {
         callbackURL: "/account",
         errorCallbackURL: "/login?error=oauth",
       });
-      // Deployed: redirects away. Preview popup: session + bearer ready.
+      // Popup path: we still have a page; token may be set
+      toast.dismiss("oauth");
       if (getBearerToken()) {
+        toast.success("登录成功");
         await afterAuth();
       }
+      // Top-level redirect path: browser leaves this page; toast is fine to leave
     } catch (err) {
+      toast.dismiss("oauth");
       const msg = err instanceof Error ? err.message : "登录失败";
-      if (/pop-up|popup|blocked/i.test(msg)) {
-        toast.error("浏览器拦截了登录弹窗，请允许弹窗后重试");
-      } else if (/cancel/i.test(msg)) {
+      if (/pop-up|popup|弹窗|拦截/i.test(msg)) {
+        toast.error(msg, { duration: 6000 });
+      } else if (/cancel|取消/i.test(msg)) {
         toast.message("已取消登录");
       } else {
-        toast.error(msg);
+        toast.error(msg, { duration: 5000 });
       }
     } finally {
       setOauthBusy(null);
@@ -140,11 +153,10 @@ function LoginPage() {
         toast.success("登录成功");
       }
       if (!getBearerToken()) {
-        // Cookie-only path (HTTPS deploy) — still OK if getSession sees cookie.
         const sess = await authClient.getSession();
         if (!sess.data?.user) {
           throw new Error(
-            "登录响应成功，但会话未能保存。请改用 HTTPS 正式域名，或刷新后重试。",
+            "登录响应成功，但会话未能保存。请刷新后重试。",
           );
         }
       }
@@ -153,7 +165,7 @@ function LoginPage() {
       const msg = err instanceof Error ? err.message : "操作失败";
       if (/invalid origin|forbidden/i.test(msg)) {
         toast.error(
-          "登录被拒绝（Invalid origin）。正式站请设置 BETTER_AUTH_URL 为当前网站地址。",
+          "登录被拒绝（Invalid origin）。请确认站点地址配置正确。",
         );
       } else if (/failed to fetch|network/i.test(msg)) {
         toast.error("无法连接登录服务，请检查网络后重试");
@@ -161,14 +173,8 @@ function LoginPage() {
         toast.error("该邮箱已注册，请直接登录");
         setMode("signin");
       } else if (/invalid.*password|invalid.*email|credentials/i.test(msg)) {
-        toast.error("邮箱或密码不正确。若刚换了环境，需重新注册（数据未持久化）。");
-      } else if (
-        status &&
-        !status.persistentDatabase &&
-        /invalid|credential|password|user/i.test(msg)
-      ) {
         toast.error(
-          `${msg}（当前无持久数据库：重启/重新发布后旧账号会消失，请重新注册）`,
+          "邮箱或密码不正确。若环境刚发布过，旧账号可能已清空——请重新注册。",
         );
       } else {
         toast.error(msg);
@@ -181,8 +187,8 @@ function LoginPage() {
   const showDeployWarning =
     status &&
     (!status.persistentDatabase ||
-      !status.grokAuthCustom ||
-      !status.cloudflareWorker.configured);
+      !status.cloudflareWorker?.configured ||
+      status.authBackend === "pglite");
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center py-8">
@@ -202,18 +208,13 @@ function LoginPage() {
         <div className="mb-4 rounded-[var(--radius-lg)] border border-border bg-bg-subtle/80 px-3 py-3 text-xs leading-relaxed text-fg-muted">
           <div className="mb-1.5 flex items-center gap-1.5 font-medium text-fg">
             <AlertTriangle className="h-3.5 w-3.5 text-accent" />
-            运行环境提示
+            提示
           </div>
           <ul className="space-y-1">
-            {status.notes.slice(0, 3).map((n) => (
-              <li key={n}>· {n}</li>
-            ))}
+            <li>· 点 Google / X 会跳转到授权页，请在新页面完成登录。</li>
+            <li>· 若按钮无跳转，请关闭广告拦截，或允许弹窗后重试。</li>
+            <li>· 也可用下方邮箱直接注册（当前环境已支持）。</li>
           </ul>
-          {!status.persistentDatabase ? (
-            <p className="mt-2 text-fg">
-              当前账号只存在内存里：服务重启或重新发布后，请用同一邮箱重新注册。
-            </p>
-          ) : null}
         </div>
       ) : null}
 
@@ -238,6 +239,7 @@ function LoginPage() {
                       className={cn(
                         "flex h-12 w-full items-center justify-center gap-3 rounded-[var(--radius-lg)] border border-border bg-bg px-4 text-sm font-medium transition-colors",
                         "hover:bg-bg-subtle disabled:opacity-50",
+                        loading && "ring-2 ring-primary/30",
                       )}
                     >
                       {loading ? (
@@ -245,7 +247,11 @@ function LoginPage() {
                       ) : (
                         providerIcon(p.providerId)
                       )}
-                      <span>{providerLabel(p.providerId, p.label)}</span>
+                      <span>
+                        {loading
+                          ? `正在打开 ${providerShort(p.providerId)}…`
+                          : providerLabel(p.providerId, p.label)}
+                      </span>
                     </button>
                   );
                 })}
@@ -338,10 +344,6 @@ function LoginPage() {
                     </button>
                   </>
                 )}
-              </p>
-
-              <p className="text-center text-[11px] leading-relaxed text-fg-subtle">
-                支持 Google、X 与邮箱。若提示密码错误，多半是环境重启后旧账号已清空——点注册即可。
               </p>
             </>
           ) : (

@@ -26,14 +26,11 @@ export const authClient = createAuthClient({
       return ctx;
     },
     onSuccess(ctx) {
-      // Prefer the full signed session token from the bearer plugin header.
       const fromHeader = ctx.response.headers.get("set-auth-token");
       if (fromHeader) {
         setBearerToken(fromHeader);
         return;
       }
-      // Fallback: JSON body `{ token }` on sign-in / sign-up (unsigned id is
-      // accepted by some Better Auth builds; header is preferred).
       try {
         const data = ctx.data as { token?: string } | undefined;
         if (data?.token && typeof data.token === "string") {
@@ -57,12 +54,6 @@ export const authEnabled = import.meta.env.VITE_AUTH_ENABLED !== "false";
 export { GROK_PROVIDERS };
 
 // ── Live-preview bearer token ────────────────────────────────────────────────
-// The embedded preview iframe has partitioned cookies, so we keep the session's
-// bearer token in sessionStorage and attach it to every Better Auth request (and
-// to server functions, via `@/lib/auth/middleware`). Empty everywhere except the
-// preview after a popup sign-in, so the cookie path is untouched elsewhere.
-//
-// Also used as a fallback when Secure cookies cannot be stored (http preview).
 const BEARER_KEY = "grok-auth.bearer-token";
 
 /** The stored preview bearer token, or null. */
@@ -87,7 +78,6 @@ function setBearerToken(token: string | null): void {
 
 /**
  * Persist a session token from email sign-in/up (or any path that returns one).
- * Safe to call with null (no-op clear is via signOut).
  */
 export function captureSessionToken(token: string | null | undefined): void {
   if (token && token.trim()) setBearerToken(token.trim());
@@ -109,7 +99,6 @@ export async function signInWithEmail(input: {
   const token =
     (data as { token?: string } | null)?.token ?? getBearerToken();
   if (token) setBearerToken(token);
-  // Refresh session store with bearer attached.
   await authClient.getSession();
 }
 
@@ -132,106 +121,148 @@ export async function signUpWithEmail(input: {
 }
 
 /**
- * The sandbox live preview runs this app inside an iframe on a `*.grok-sandbox.com`
- * host, where a full-page redirect to the broker can't work — so sign-in uses a
- * popup there and a normal redirect everywhere else.
+ * True when we must use a popup (cannot top-navigate the frame to Google/X).
+ * - Official live preview: `*.grok-sandbox.com`
+ * - Any embedded iframe (Grok chat preview, etc.)
  */
-function inLivePreview(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.location.hostname.endsWith(".grok-sandbox.com")
-  );
+function needsPopupSignIn(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (window.self !== window.top) return true;
+  } catch {
+    // Cross-origin parent access throws → we are embedded
+    return true;
+  }
+  return window.location.hostname.endsWith(".grok-sandbox.com");
 }
 
 /** Message the popup posts back to the opener once sign-in completes. */
-type PopupMessage = { source: "grok-auth-popup"; token: string | null; error?: string };
+type PopupMessage = {
+  source: "grok-auth-popup";
+  token: string | null;
+  error?: string;
+};
+
+/**
+ * Request OAuth URL from this app's Better Auth (same-origin).
+ * Uses raw fetch so we always see the real error body.
+ */
+async function requestOAuthUrl(
+  providerId: string,
+  callbackURL: string,
+  errorCallbackURL: string,
+): Promise<string> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  const bearer = getBearerToken();
+  if (bearer) headers.authorization = `Bearer ${bearer}`;
+
+  const res = await fetch("/api/auth/sign-in/oauth2", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({
+      providerId,
+      callbackURL,
+      errorCallbackURL,
+    }),
+  });
+
+  const text = await res.text();
+  let json: { url?: string; message?: string; code?: string; error?: string } =
+    {};
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    /* not json */
+  }
+
+  if (!res.ok) {
+    throw new Error(
+      json.message ||
+        json.error ||
+        `登录接口失败 (${res.status})${text ? `: ${text.slice(0, 120)}` : ""}`,
+    );
+  }
+
+  // better-auth client may wrap; also accept top-level url
+  const url =
+    json.url ||
+    (json as { data?: { url?: string } }).data?.url ||
+    null;
+  if (!url) {
+    throw new Error("未获得登录跳转地址，请刷新后重试");
+  }
+  return url;
+}
 
 /**
  * Start sign-in with one upstream provider (`providerId` from `GROK_PROVIDERS`),
  * federating through the Grok auth broker.
  *
- * - **Live preview** (`*.grok-sandbox.com` iframe): opens a POPUP to
- *   `/auth/popup`, served by the template Vite plugin (see `vite.config.ts` +
- *   `popup.server.ts`) — 302s to the broker/upstream login (no app chrome) and,
- *   on return, posts the session bearer token back. We store it and refresh the
- *   session; no top-level navigation of the iframe to the broker.
- * - **Deployed** (and local non-iframe): a normal full-page redirect into the broker.
- *
- * Either way it clears any existing local session FIRST so switching providers
- * actually switches identity.
+ * - **Iframe / live preview**: popup → `/auth/popup` → broker → postMessage token
+ * - **Top-level (modu.grok.me 等)**: full-page redirect to broker / Google / X
  */
 export async function signIn(
   providerId: string,
   opts: { callbackURL?: string; errorCallbackURL?: string } = {},
 ): Promise<void> {
   const callbackURL = opts.callbackURL ?? "/";
-  const errorCallbackURL = opts.errorCallbackURL ?? "/";
+  const errorCallbackURL = opts.errorCallbackURL ?? "/login?error=oauth";
+  const usePopup = needsPopupSignIn();
 
-  // Open the popup SYNCHRONOUSLY on the user gesture — before any await
-  // (including signOut). Awaiting first drops user-gesture privilege in some
-  // browsers when the opener is a cross-origin live-preview iframe.
-  const popup = inLivePreview() ? openSignInPopup(providerId) : null;
+  // Open popup SYNCHRONOUSLY on user gesture before any await
+  const popup = usePopup ? openSignInPopup(providerId) : null;
 
-  // Clear any prior session so switching providers actually switches identity.
-  // In the live preview the iframe has no session cookie — only a bearer token —
-  // so skip the network signOut when there's nothing to clear.
-  const hadBearer = Boolean(getBearerToken());
-  if (hadBearer || !inLivePreview()) {
-    try {
-      await authClient.signOut();
-    } catch {
-      // No active session (or a transient sign-out error) — proceed to sign in.
-    }
-  }
+  // Clear prior identity — do NOT block redirect on signOut (hangs = "没反应")
   setBearerToken(null);
+  void authClient.signOut().catch(() => {
+    /* ignore */
+  });
 
-  if (inLivePreview()) {
-    if (!popup) throw new Error("Pop-up blocked — allow pop-ups for sign-in");
+  if (usePopup) {
+    if (!popup) {
+      throw new Error(
+        "浏览器拦截了登录弹窗。请允许本站弹窗后重试，或在新标签打开网站再登录。",
+      );
+    }
     const token = await waitForPopupToken(popup);
-    if (!token) throw new Error("Sign-in was cancelled or failed");
+    if (!token) throw new Error("登录已取消或未完成，请重试");
     setBearerToken(token);
-    // Refresh the client session store with the bearer attached (onRequest).
-    // Avoid a full iframe reload when we're already on the destination — that
-    // reload was the slow "still loading after the popup closed" feeling.
     try {
       await authClient.getSession();
     } catch {
-      /* session store will recover on next useSession fetch */
+      /* session store will recover */
     }
     if (typeof window !== "undefined") {
       const dest = new URL(callbackURL, window.location.origin);
       const here = window.location;
-      if (dest.origin !== here.origin || dest.pathname !== here.pathname || dest.search !== here.search) {
-        window.location.href = callbackURL;
+      if (
+        dest.origin !== here.origin ||
+        dest.pathname !== here.pathname ||
+        dest.search !== here.search
+      ) {
+        window.location.assign(callbackURL);
       }
     }
     return;
   }
 
-  const { data, error } = await authClient.signIn.oauth2({
-    providerId,
-    callbackURL,
-    errorCallbackURL,
-  });
-  if (error) throw new Error(error.message ?? "Sign-in failed");
-  if (data?.url) window.location.href = data.url;
+  // Top-level: get OAuth URL then hard-navigate (most reliable)
+  const url = await requestOAuthUrl(providerId, callbackURL, errorCallbackURL);
+  window.location.assign(url);
 }
 
 /**
  * Open `/auth/popup` in a new window. Must run synchronously inside the click
- * handler (no await before this). The path is served by the template Vite
- * plugin (`authPopupPlugin` in vite.config.ts) — NOT by a React route.
- *
- * Opens the real URL directly (not about:blank → assign). From a cross-origin
- * iframe the about:blank dance often fails on the first click and the window
- * ends up showing the app shell.
+ * handler (no await before this).
  */
 function openSignInPopup(providerId: string): Window | null {
   const origin = window.location.origin;
   const url = `${origin}/auth/popup?providerId=${encodeURIComponent(providerId)}`;
-  // Unique name per attempt so a prior attempt stuck on the SPA is not reused.
   const name = `grok-signin-${Date.now()}`;
-  return window.open(url, name, "popup,width=500,height=650");
+  return window.open(url, name, "popup,width=520,height=680");
 }
 
 /**
@@ -255,8 +286,6 @@ function waitForPopupToken(popup: Window): Promise<string | null> {
       if (!data || data.source !== "grok-auth-popup") return;
       settle(data.token ?? null);
     };
-    // Fallback when the user dismisses the popup. Grace period lets the
-    // completion page's postMessage win over a racing `popup.closed`.
     const pollTimer = window.setInterval(() => {
       if (!popup.closed) return;
       window.clearInterval(pollTimer);

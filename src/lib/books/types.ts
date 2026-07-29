@@ -15,6 +15,8 @@ export interface Chapter {
   id: string;
   title: string;
   content: string;
+  /** EPUB spine href for navigation (optional) */
+  href?: string;
 }
 
 export interface Book {
@@ -31,13 +33,16 @@ export interface Book {
   rating: number;
   readers: number;
   wordCount: number;
-  /** Built-in sample chapters (text format) */
+  /** Built-in sample chapters (text format) or parsed TOC */
   chapters?: Chapter[];
   /** R2 / storage object key for binary file */
   storageKey?: string;
   /** Local blob URL or object URL for reading uploaded files */
   fileName?: string;
   fileSize?: number;
+  pageCount?: number;
+  /** Short text extract for AI / listing */
+  previewText?: string;
   createdAt: number;
   progress?: number; // 0-100
   lastReadAt?: number;
