@@ -4,12 +4,14 @@ import { BookCard } from "@/components/books/BookCard";
 import { Button } from "@/components/ui/button";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useLibraryStore } from "@/lib/store/library";
+import { useT } from "@/lib/i18n/locale";
 
 export const Route = createFileRoute("/shelf")({
   component: ShelfPage,
 });
 
 function ShelfPage() {
+  const t = useT();
   const ready = useLibraryStore((s) => s.ready);
   const syncing = useLibraryStore((s) => s.syncing);
   const cloudUserId = useLibraryStore((s) => s.cloudUserId);
@@ -32,19 +34,19 @@ function ShelfPage() {
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-serif text-3xl font-medium tracking-tight">书架</h1>
+          <h1 className="font-serif text-3xl font-medium tracking-tight">{t.shelf.title}</h1>
           <p className="mt-1 text-fg-muted">
-            {ready ? `${books.length} 本藏书 · ${progressHint}` : "加载中…"}
+            {ready ? `${books.length} · ${progressHint}` : t.common.loading}
           </p>
         </div>
         <div className="flex gap-2">
           <Button asChild variant="secondary">
-            <Link to="/library">去书城</Link>
+            <Link to="/library">{t.nav.library}</Link>
           </Button>
           <Button asChild>
             <Link to="/upload">
               <Upload className="h-4 w-4" />
-              上传
+              {t.nav.upload}
             </Link>
           </Button>
         </div>
@@ -57,16 +59,16 @@ function ShelfPage() {
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-bg-subtle">
             <BookMarked className="h-5 w-5 text-fg-muted" />
           </div>
-          <h2 className="text-lg font-medium">书架还是空的</h2>
+          <h2 className="text-lg font-medium">{t.shelf.empty}</h2>
           <p className="mt-2 max-w-sm text-sm text-fg-muted">
-            从书城添加精选读物，或上传你的 PDF / EPUB，开始第一段阅读。
+            {t.shelf.lead}
           </p>
           <div className="mt-6 flex gap-2">
             <Button asChild>
-              <Link to="/library">逛书城</Link>
+              <Link to="/library">{t.nav.library}</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link to="/upload">上传图书</Link>
+              <Link to="/upload">{t.nav.upload}</Link>
             </Button>
           </div>
         </div>
@@ -74,7 +76,7 @@ function ShelfPage() {
         <>
           {reading.length > 0 && (
             <section>
-              <h2 className="mb-3 text-sm font-medium text-fg-muted">继续阅读</h2>
+              <h2 className="mb-3 text-sm font-medium text-fg-muted">{t.shelf.continue}</h2>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
                 {reading.map((b) => (
                   <BookCard key={b.id} book={b} showProgress />

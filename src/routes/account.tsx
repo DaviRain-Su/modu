@@ -20,6 +20,7 @@ import {
 } from "@/lib/server/ai-settings";
 import { listMyConversations } from "@/lib/server/ai-conversations";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/locale";
 
 export const Route = createFileRoute("/account")({
   component: AccountPage,
@@ -47,6 +48,7 @@ const PLANS = [
 ];
 
 function AccountPage() {
+  const t = useT();
   const { user, isPending } = useCurrentUserState();
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -165,7 +167,7 @@ function AccountPage() {
     <div className="mx-auto max-w-3xl space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-serif text-3xl font-medium tracking-tight">账户</h1>
+          <h1 className="font-serif text-3xl font-medium tracking-tight">{t.account.title}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-fg-muted">
             <span>{user.primaryEmail ?? user.displayName}</span>
             <span>·</span>

@@ -12,12 +12,14 @@ import {
   type HotBookRow,
 } from "@/lib/server/social";
 import { formatCount } from "@/lib/utils";
+import { useT } from "@/lib/i18n/locale";
 
 export const Route = createFileRoute("/rankings")({
   component: RankingsPage,
 });
 
 function RankingsPage() {
+  const t = useT();
   const getBook = useLibraryStore((s) => s.getBook);
   const [hot, setHot] = useState<HotBookRow[]>([]);
   const [notes, setNotes] = useState<
@@ -76,7 +78,7 @@ function RankingsPage() {
       <div className="flex items-start gap-2 rounded-[var(--radius-lg)] border border-border bg-bg-subtle/50 px-3 py-3 text-xs leading-relaxed text-fg-muted">
         <Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
         <p>
-          热门书单仅含<strong className="text-fg">公版书城</strong>
+          {t.rankings.title}仅含<strong className="text-fg">公版书城</strong>
           书目。私有上传可贡献阅读次数到系统统计，但留言板只显示你的
           <strong className="text-fg">评论/摘要</strong>
           ，不展示书名与原文。

@@ -10,11 +10,12 @@ import { AppShell } from "@/components/layout/AppShell";
 import { AuthProvider } from "@/lib/auth/provider";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { AppThemeProvider, useAppTheme } from "@/lib/theme/app-theme";
+import { LocaleProvider } from "@/lib/i18n/locale";
 import { useLibraryStore } from "@/lib/store/library";
 import appCss from "../styles.css?url";
 
 // Prevent theme flash before React hydrates
-const themeBootScript = `(function(){try{var t=localStorage.getItem('modu_app_theme');if(t!=='light'&&t!=='dark')t='dark';document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}catch(e){document.documentElement.dataset.theme='dark';}})();`;
+const themeBootScript = `(function(){try{var t=localStorage.getItem('modu_app_theme');if(t!=='light'&&t!=='dark')t='dark';document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;var l=localStorage.getItem('modu_locale');if(l==='en'||l==='zh')document.documentElement.lang=l==='en'?'en':'zh-CN';}catch(e){document.documentElement.dataset.theme='dark';}})();`;
 
 export const Route = createRootRoute({
   head: () => ({
@@ -25,12 +26,12 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
       {
-        title: "墨读 · 在线阅读器",
+        title: "墨读 · Modu · Online Reader",
       },
       {
         name: "description",
         content:
-          "墨读 — 支持 PDF / EPUB 的在线阅读器，公版书城、私有上传、AI 伴读，手机与电脑皆宜。",
+          "墨读 Modu — public-domain library, private EPUB/PDF upload, AI companion reading. 中英双语 · 手机与电脑皆宜。",
       },
       { name: "theme-color", content: "#0b0b0c" },
     ],
@@ -78,13 +79,15 @@ function RootComponent() {
       </head>
       <body>
         <AppThemeProvider>
-          <AuthProvider>
-            <LibraryBootstrap />
-            <AppShell>
-              <Outlet />
-            </AppShell>
-            <ThemedToaster />
-          </AuthProvider>
+          <LocaleProvider>
+            <AuthProvider>
+              <LibraryBootstrap />
+              <AppShell>
+                <Outlet />
+              </AppShell>
+              <ThemedToaster />
+            </AuthProvider>
+          </LocaleProvider>
         </AppThemeProvider>
         <Scripts />
       </body>

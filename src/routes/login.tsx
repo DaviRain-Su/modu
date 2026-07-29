@@ -19,6 +19,7 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { ensureMyProfile } from "@/lib/server/profile";
 import { getSystemStatus } from "@/lib/server/system-status";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/locale";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -34,11 +35,11 @@ function providerIcon(providerId: string) {
   return null;
 }
 
-function providerLabel(providerId: string, fallback: string) {
-  if (providerId.includes("google")) return "使用 Google 继续";
+function providerLabel(providerId: string, fallback: string, labels: { google: string; x: string }) {
+  if (providerId.includes("google")) return labels.google;
   if (providerId.includes("x") || providerId.includes("twitter"))
-    return "使用 X 继续";
-  return `使用 ${fallback} 继续`;
+    return labels.x;
+  return fallback;
 }
 
 function providerShort(providerId: string) {
@@ -48,6 +49,7 @@ function providerShort(providerId: string) {
 }
 
 function LoginPage() {
+  const t = useT();
   const navigate = useNavigate();
   const { user, isPending } = useCurrentUserState();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -77,9 +79,7 @@ function LoginPage() {
     const params = new URLSearchParams(window.location.search);
     const err = params.get("error");
     if (err === "oauth" || err === "access_denied") {
-      toast.error(
-        "社交登录未完成。请重试；若反复失败，可先用邮箱注册登录。",
-      );
+      toast.error(t.login.oauthFail);
     }
   }, []);
 
@@ -195,10 +195,10 @@ function LoginPage() {
           <BookOpen className="h-5 w-5" />
         </div>
         <h1 className="font-serif text-2xl font-medium tracking-tight">
-          登录墨读
+          {t.login.title}
         </h1>
         <p className="mt-2 text-sm text-fg-muted">
-          Google · X · 邮箱 —— 同步书架、批注与 AI 档案
+          {t.login.subtitle}
         </p>
       </div>
 
@@ -206,7 +206,7 @@ function LoginPage() {
         <div className="mb-4 rounded-[var(--radius-lg)] border border-accent/30 bg-accent/5 px-3 py-3 text-xs leading-relaxed text-fg-muted">
           <div className="mb-1.5 flex items-center gap-1.5 font-medium text-fg">
             <AlertTriangle className="h-3.5 w-3.5 text-accent" />
-            关于登录（当前环境）
+            {t.login.aboutTitle}
           </div>
           <ul className="space-y-1.5">
             <li>
@@ -215,7 +215,7 @@ function LoginPage() {
               。若提示密码错误，多半是站点重新发布后预览库被清空——请重新注册同一个邮箱即可。
             </li>
             <li>
-              · Google / X 需要正式 OAuth 配置；未配置时请先用邮箱。点按钮会跳转授权页。
+              · {t.login.aboutSocial}
             </li>
             <li>
               · 要让账号<strong className="text-fg">永久保存</strong>
@@ -228,7 +228,7 @@ function LoginPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">
-            {mode === "signin" ? "欢迎回来" : "创建账户"}
+            {mode === "signin" ? t.login.welcome : t.login.create}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -257,7 +257,7 @@ function LoginPage() {
                       <span>
                         {loading
                           ? `正在打开 ${providerShort(p.providerId)}…`
-                          : providerLabel(p.providerId, p.label)}
+                          : providerLabel(p.providerId, p.label, { google: t.login.continueGoogle, x: t.login.continueX })}
                       </span>
                     </button>
                   );
@@ -266,7 +266,7 @@ function LoginPage() {
 
               <div className="relative py-1 text-center text-xs text-fg-subtle">
                 <span className="relative z-10 bg-bg-elevated px-2">
-                  或使用邮箱
+                  {t.login.orEmail}
                 </span>
                 <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
               </div>
@@ -287,7 +287,7 @@ function LoginPage() {
                   </div>
                 )}
                 <div className="space-y-1.5">
-                  <label className="text-xs text-fg-muted">邮箱</label>
+                  <label className="text-xs text-fg-muted">{t.login.email}</label>
                   <Input
                     type="email"
                     required
@@ -298,7 +298,7 @@ function LoginPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs text-fg-muted">密码</label>
+                  <label className="text-xs text-fg-muted">{t.login.password}</label>
                   <Input
                     type="password"
                     required
@@ -321,7 +321,7 @@ function LoginPage() {
                   ) : (
                     <>
                       <MailIcon className="h-4 w-4" />
-                      {mode === "signin" ? "邮箱登录" : "邮箱注册"}
+                      {mode === "signin" ? t.login.signIn : t.login.signUp}
                     </>
                   )}
                 </Button>
@@ -330,7 +330,7 @@ function LoginPage() {
               <p className="text-center text-sm text-fg-muted">
                 {mode === "signin" ? (
                   <>
-                    还没有账户？{" "}
+                    {t.login.noAccount}{" "}
                     <button
                       type="button"
                       className="text-fg underline-offset-4 hover:underline"
@@ -341,7 +341,7 @@ function LoginPage() {
                   </>
                 ) : (
                   <>
-                    已有账户？{" "}
+                    {t.login.hasAccount}{" "}
                     <button
                       type="button"
                       className="text-fg underline-offset-4 hover:underline"
@@ -361,11 +361,11 @@ function LoginPage() {
 
       <p className="mt-6 text-center text-xs text-fg-subtle">
         <Link to="/" className="hover:text-fg">
-          返回首页
+          {t.login.backHome}
         </Link>
         {" · "}
         <a href="/api/health" className="hover:text-fg">
-          系统状态
+          {t.login.systemStatus}
         </a>
       </p>
     </div>

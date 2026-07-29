@@ -9,12 +9,14 @@ import { COPYRIGHT_POLICY_SUMMARY } from "@/lib/books/copyright";
 import type { Book, BookCategory } from "@/lib/books/types";
 import { useLibraryStore } from "@/lib/store/library";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/locale";
 
 export const Route = createFileRoute("/library")({
   component: LibraryPage,
 });
 
 function LibraryPage() {
+  const t = useT();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<BookCategory>("全部");
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -58,10 +60,10 @@ function LibraryPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-serif text-3xl font-medium tracking-tight">
-            公版书城
+            {t.library.title}
           </h1>
           <p className="mt-1 text-fg-muted">
-            官方精选 + 用户声明的社区公版 · 有版权的书请勿上架
+            {t.library.lead}
           </p>
         </div>
         <div className="relative w-full sm:max-w-xs">
@@ -69,7 +71,7 @@ function LibraryPage() {
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="搜索书名、作者、标签…"
+            placeholder={t.library.search}
             className="pl-9"
           />
         </div>

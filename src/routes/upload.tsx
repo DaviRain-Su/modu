@@ -29,6 +29,7 @@ import type { Chapter, PublicDomainBasis } from "@/lib/books/types";
 import { submitCommunityPdBook } from "@/lib/server/community-books";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { formatBytes } from "@/lib/utils";
+import { useT } from "@/lib/i18n/locale";
 
 export const Route = createFileRoute("/upload")({
   component: UploadPage,
@@ -44,6 +45,7 @@ const PHASE_LABEL: Record<string, string> = {
 };
 
 function UploadPage() {
+  const t = useT();
   const navigate = useNavigate();
   const { user, isPending } = useCurrentUserState();
   const uploadBook = useLibraryStore((s) => s.uploadBook);
@@ -180,7 +182,7 @@ function UploadPage() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h1 className="font-serif text-3xl font-medium tracking-tight">
-          上传图书
+          {t.upload.title}
         </h1>
         <p className="mt-1 text-fg-muted">
           推荐 EPUB（完整目录与重排版）。默认私有；公版可声明上架。PDF 暂不重点支持。

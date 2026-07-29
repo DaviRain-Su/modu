@@ -13,39 +13,19 @@ import {
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { signOut } from "@/lib/auth/client";
 import { useAppTheme } from "@/lib/theme/app-theme";
+import { useLocale, useT } from "@/lib/i18n/locale";
 import { cn } from "@/lib/utils";
-
-const nav = [
-  { to: "/", label: "首页", icon: Home, match: (p: string) => p === "/" },
-  {
-    to: "/library",
-    label: "书城",
-    icon: Library,
-    match: (p: string) => p.startsWith("/library") || p.startsWith("/book"),
-  },
-  {
-    to: "/rankings",
-    label: "热榜",
-    icon: Flame,
-    match: (p: string) => p.startsWith("/rankings"),
-  },
-  {
-    to: "/shelf",
-    label: "书架",
-    icon: BookMarked,
-    match: (p: string) => p.startsWith("/shelf"),
-  },
-] as const;
 
 function ThemeToggle() {
   const { theme, toggle } = useAppTheme();
+  const t = useT();
   return (
     <button
       type="button"
       onClick={toggle}
       className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
-      aria-label={theme === "dark" ? "切换浅色主题" : "切换深色主题"}
-      title={theme === "dark" ? "浅色" : "深色"}
+      aria-label={theme === "dark" ? t.theme.toLight : t.theme.toDark}
+      title={theme === "dark" ? t.theme.toLight : t.theme.toDark}
     >
       {theme === "dark" ? (
         <Sun className="h-4 w-4" strokeWidth={1.75} />
@@ -56,8 +36,46 @@ function ThemeToggle() {
   );
 }
 
+function LangToggle() {
+  const { locale, setLocale } = useLocale();
+  const t = useT();
+  return (
+    <div
+      className="inline-flex h-9 items-center rounded-[var(--radius-md)] border border-border/80 bg-bg-subtle/40 p-0.5 text-xs font-medium"
+      role="group"
+      aria-label={t.lang.switchTo}
+    >
+      <button
+        type="button"
+        onClick={() => setLocale("zh")}
+        className={cn(
+          "rounded-[calc(var(--radius-md)-2px)] px-2 py-1 transition-colors",
+          locale === "zh"
+            ? "bg-bg-elevated text-fg shadow-sm"
+            : "text-fg-subtle hover:text-fg",
+        )}
+      >
+        {t.lang.zh}
+      </button>
+      <button
+        type="button"
+        onClick={() => setLocale("en")}
+        className={cn(
+          "rounded-[calc(var(--radius-md)-2px)] px-2 py-1 transition-colors",
+          locale === "en"
+            ? "bg-bg-elevated text-fg shadow-sm"
+            : "text-fg-subtle hover:text-fg",
+        )}
+      >
+        {t.lang.en}
+      </button>
+    </div>
+  );
+}
+
 function AuthSlot() {
   const { user, isPending } = useCurrentUserState();
+  const t = useT();
   if (isPending) {
     return (
       <div className="h-9 w-20 animate-pulse rounded-[var(--radius-md)] bg-bg-subtle" />
@@ -69,7 +87,7 @@ function AuthSlot() {
         to="/login"
         className="rounded-[var(--radius-md)] bg-primary px-3.5 py-2 text-sm font-medium text-primary-fg"
       >
-        登录
+        {t.nav.login}
       </Link>
     );
   }
@@ -83,7 +101,7 @@ function AuthSlot() {
           {(user.displayName ?? user.primaryEmail ?? "U").charAt(0)}
         </span>
         <span className="hidden truncate sm:inline">
-          {user.displayName ?? "账户"}
+          {user.displayName ?? t.nav.account}
         </span>
       </Link>
       <button
@@ -91,7 +109,7 @@ function AuthSlot() {
         onClick={() => void signOut()}
         className="hidden text-xs text-fg-subtle hover:text-fg md:inline"
       >
-        退出
+        {t.nav.logout}
       </button>
     </div>
   );
@@ -106,6 +124,29 @@ export function AppShell({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isReader = pathname.startsWith("/read");
+  const t = useT();
+
+  const nav = [
+    { to: "/", label: t.nav.home, icon: Home, match: (p: string) => p === "/" },
+    {
+      to: "/library",
+      label: t.nav.library,
+      icon: Library,
+      match: (p: string) => p.startsWith("/library") || p.startsWith("/book"),
+    },
+    {
+      to: "/rankings",
+      label: t.nav.rankings,
+      icon: Flame,
+      match: (p: string) => p.startsWith("/rankings"),
+    },
+    {
+      to: "/shelf",
+      label: t.nav.shelf,
+      icon: BookMarked,
+      match: (p: string) => p.startsWith("/shelf"),
+    },
+  ] as const;
 
   if (isReader || hideNav) {
     return <>{children}</>;
@@ -120,9 +161,11 @@ export function AppShell({
               <BookOpen className="h-4 w-4" strokeWidth={1.75} />
             </span>
             <div className="leading-tight">
-              <div className="text-sm font-semibold tracking-tight">墨读</div>
+              <div className="text-sm font-semibold tracking-tight">
+                {t.brand}
+              </div>
               <div className="hidden text-[11px] text-fg-subtle sm:block">
-                沉浸阅读 · AI 伴读
+                {t.brandTag}
               </div>
             </div>
           </Link>
@@ -154,7 +197,7 @@ export function AppShell({
                   : "text-fg-muted hover:bg-bg-subtle/70 hover:text-fg",
               )}
             >
-              上传
+              {t.nav.upload}
             </Link>
             <Link
               to="/account"
@@ -165,11 +208,12 @@ export function AppShell({
                   : "text-fg-muted hover:bg-bg-subtle/70 hover:text-fg",
               )}
             >
-              账户
+              {t.nav.account}
             </Link>
           </nav>
 
           <div className="flex items-center gap-1.5">
+            <LangToggle />
             <ThemeToggle />
             <AuthSlot />
           </div>
@@ -212,7 +256,7 @@ export function AppShell({
               className="h-5 w-5"
               strokeWidth={pathname.startsWith("/account") ? 2.1 : 1.7}
             />
-            我的
+            {t.nav.me}
           </Link>
         </div>
       </nav>
