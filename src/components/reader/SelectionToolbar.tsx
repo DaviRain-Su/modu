@@ -4,6 +4,7 @@ import {
   Highlighter,
   MessageSquarePlus,
   Sparkles,
+  Users,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -40,25 +41,28 @@ export type SelectionAnchor = {
   text: string;
   x: number;
   y: number;
-  /** viewport coords of selection rect bottom for note panel */
   bottom: number;
 };
 
 /**
- * 选区浮层：高亮色 · 批注 · 问 AI · 复制
- * 交互对齐 liber 划线菜单 + empty 的 金/朱/青
+ * 选区浮层：高亮 · 写想法（同一句共读）· 问 AI · 复制
  */
 export function SelectionToolbar({
   anchor,
+  communityCount = 0,
+  showCommunity = true,
   onHighlight,
-  onAnnotate,
+  onThoughts,
   onAskAi,
   onCopy,
   onClose,
 }: {
   anchor: SelectionAnchor;
+  /** 这句上已有多少条公开想法 */
+  communityCount?: number;
+  showCommunity?: boolean;
   onHighlight: (color: HighlightColor) => void;
-  onAnnotate: () => void;
+  onThoughts: () => void;
   onAskAi: () => void;
   onCopy: () => void;
   onClose: () => void;
@@ -68,7 +72,6 @@ export function SelectionToolbar({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    // keep inside viewport
     const w = el.offsetWidth;
     const h = el.offsetHeight;
     let left = anchor.x - w / 2;
@@ -113,7 +116,16 @@ export function SelectionToolbar({
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-0.5 p-1">
-        <ToolbarBtn icon={MessageSquarePlus} label="批注" onClick={onAnnotate} />
+        {showCommunity && (
+          <ToolbarBtn
+            icon={communityCount > 0 ? Users : MessageSquarePlus}
+            label={
+              communityCount > 0 ? `想法 ${communityCount}` : "写想法"
+            }
+            onClick={onThoughts}
+            primary
+          />
+        )}
         <ToolbarBtn icon={Sparkles} label="问 AI" onClick={onAskAi} />
         <ToolbarBtn icon={Copy} label="复制" onClick={onCopy} />
       </div>
@@ -129,16 +141,23 @@ function ToolbarBtn({
   icon: Icon,
   label,
   onClick,
+  primary,
 }: {
   icon: typeof Copy;
   label: string;
   onClick: () => void;
+  primary?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-md)] px-3 text-xs font-medium text-fg transition-colors hover:bg-bg-subtle"
+      className={cn(
+        "inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-md)] px-3 text-xs font-medium transition-colors",
+        primary
+          ? "bg-accent/15 text-fg hover:bg-accent/25"
+          : "text-fg hover:bg-bg-subtle",
+      )}
     >
       <Icon className="h-3.5 w-3.5 text-accent" />
       {label}

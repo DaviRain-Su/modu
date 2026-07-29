@@ -29,19 +29,23 @@ import {
   type SelectionAnchor,
 } from "@/components/reader/SelectionToolbar";
 import { AnnotationPopover } from "@/components/reader/AnnotationPopover";
+import { QuoteThreadSheet } from "@/components/reader/QuoteThreadSheet";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
 import { useLibraryStore } from "@/lib/store/library";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { recordBookRead, createAnnotation } from "@/lib/server/social";
+import {
+  recordBookRead,
+  createAnnotation,
+  listQuoteThreads,
+  type AnnotationRow,
+  type QuoteThread,
+} from "@/lib/server/social";
 import {
   pullReadingProgress,
   pushReadingProgress,
 } from "@/lib/server/progress";
-import {
-  listChapterDanmaku,
-  type DanmakuRow,
-} from "@/lib/server/danmaku";
+import { quotesMatch } from "@/lib/reader/quote-key";
 import type { Book, Highlight, ReadingProgress } from "@/lib/books/types";
 import {
   DEFAULT_READER_PREFS,
@@ -57,8 +61,6 @@ import { cn, uid } from "@/lib/utils";
 const searchSchema = z.object({
   chapter: z.string().optional(),
 });
-
-const DANMAKU_KEY = "modu_danmaku_on";
 
 export const Route = createFileRoute("/read/$bookId")({
   validateSearch: searchSchema,
@@ -107,8 +109,8 @@ function ReaderPage() {
   );
 
   const [cloudSynced, setCloudSynced] = useState(false);
-  const [danmaku, setDanmaku] = useState<DanmakuRow[]>([]);
-  const [danmakuOn, setDanmakuOn] = useState(true);
+  const [threads, setThreads] = useState<QuoteThread[]>([]);
+  const [threadQuote, setThreadQuote] = useState<string | null>(null);
   const [epubToc, setEpubToc] = useState<EpubTocItem[]>([]);
   const [epubCfi, setEpubCfi] = useState<string | null>(
     stored?.lastCfi ?? null,
@@ -118,11 +120,6 @@ function ReaderPage() {
 
   useEffect(() => {
     setPrefs(loadReaderPrefs());
-    try {
-      if (localStorage.getItem(DANMAKU_KEY) === "0") setDanmakuOn(false);
-    } catch {
-      /* ignore */
-    }
     setPrefsReady(true);
   }, []);
 
@@ -220,29 +217,19 @@ function ReaderPage() {
     [chapters, chapterId],
   );
 
-  const supportsDanmaku =
+  const supportsCommunity =
     book?.visibility === "public_domain" ||
     book?.visibility === "public_domain_community";
 
   useEffect(() => {
-    if (!supportsDanmaku || !book || !chapter?.id) {
-      setDanmaku([]);
+    if (!supportsCommunity || !book) {
+      setThreads([]);
       return;
     }
-    let cancelled = false;
-    void listChapterDanmaku({
-      data: { bookId: book.id, chapterId: chapter.id },
-    })
-      .then((rows) => {
-        if (!cancelled) setDanmaku(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setDanmaku([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [supportsDanmaku, book?.id, chapter?.id]);
+    void listQuoteThreads({ data: book.id })
+      .then(setThreads)
+      .catch(() => setThreads([]));
+  }, [supportsCommunity, book?.id]);
 
   const scheduleCloudPush = useCallback(
     (pct: number, extra?: { chapterId?: string; page?: number; cfi?: string }) => {
@@ -336,7 +323,7 @@ function ReaderPage() {
       setLocalHighlights(next);
       persist(progress, { highlights: next });
 
-      if (input.isPublic && user) {
+      if (input.isPublic && user && supportsCommunity) {
         try {
           await createAnnotation({
             data: {
@@ -355,7 +342,15 @@ function ReaderPage() {
         }
       }
     },
-    [book, chapter?.id, localHighlights, persist, progress, user],
+    [
+      book,
+      chapter?.id,
+      localHighlights,
+      persist,
+      progress,
+      user,
+      supportsCommunity,
+    ],
   );
 
   const handleHighlight = (color: HighlightColor) => {
@@ -366,8 +361,17 @@ function ReaderPage() {
     setSel(null);
   };
 
-  const handleAnnotate = () => {
+  const communityCountFor = (text: string) =>
+    threads.find((x) => quotesMatch(x.quote, text))?.count ?? 0;
+
+  const handleThoughts = () => {
     if (!sel) return;
+    if (supportsCommunity) {
+      setThreadQuote(sel.text);
+      setSel(null);
+      clearBrowserSelection();
+      return;
+    }
     setNoteDraft({ quote: sel.text, color: "gold" });
     setSel(null);
     clearBrowserSelection();
@@ -403,18 +407,6 @@ function ReaderPage() {
       bottom: window.innerHeight * 0.35 + 24,
     });
   }, []);
-
-  const toggleDanmaku = () => {
-    setDanmakuOn((v) => {
-      const next = !v;
-      try {
-        localStorage.setItem(DANMAKU_KEY, next ? "1" : "0");
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  };
 
   const aiContextText =
     selectedText ||
@@ -477,9 +469,11 @@ function ReaderPage() {
                   : book.format === "pdf" && book.storageKey
                     ? `PDF · 第 ${page} 页`
                     : chapter?.title || book.format.toUpperCase()}
-                {localHighlights.length > 0
-                  ? ` · ${localHighlights.length} 划线`
-                  : ""}
+                {threads.length > 0
+                  ? ` · ${threads.length} 句有想法`
+                  : localHighlights.length > 0
+                    ? ` · ${localHighlights.length} 划线`
+                    : ""}
                 {user && cloudSynced && (
                   <span className="inline-flex items-center gap-0.5 text-accent">
                     <Cloud className="h-3 w-3" />
@@ -566,11 +560,8 @@ function ReaderPage() {
               font={prefs.font}
               theme={prefs.theme}
               highlights={localHighlights}
-              danmaku={danmaku}
-              danmakuEnabled={supportsDanmaku && danmakuOn}
-              onToggleDanmaku={supportsDanmaku ? toggleDanmaku : undefined}
-              signedIn={Boolean(user)}
-              onDanmakuPosted={(row) => setDanmaku((d) => [...d, row])}
+              publicThreads={supportsCommunity ? threads : []}
+              onOpenThread={(q) => setThreadQuote(q)}
               onProgress={onProgress}
               onSelect={setSel}
             />
@@ -633,16 +624,63 @@ function ReaderPage() {
         )}
       </div>
 
-      {sel && !noteDraft && (
+      {sel && !noteDraft && !threadQuote && (
         <SelectionToolbar
           anchor={sel}
+          showCommunity
+          communityCount={communityCountFor(sel.text)}
           onHighlight={handleHighlight}
-          onAnnotate={handleAnnotate}
+          onThoughts={handleThoughts}
           onAskAi={handleAskAi}
           onCopy={() => void handleCopy()}
           onClose={() => {
             clearBrowserSelection();
             setSel(null);
+          }}
+        />
+      )}
+
+      {threadQuote && (
+        <QuoteThreadSheet
+          open
+          quote={threadQuote}
+          bookId={book.id}
+          chapterId={chapter?.id}
+          threads={threads}
+          signedIn={Boolean(user)}
+          isPublicDomain={Boolean(supportsCommunity)}
+          onClose={() => setThreadQuote(null)}
+          onPosted={(row: AnnotationRow) => {
+            setThreads((prev) => {
+              const hit = prev.find((t) => quotesMatch(t.quote, row.quote));
+              if (hit) {
+                return prev.map((t) =>
+                  t === hit
+                    ? {
+                        ...t,
+                        count: t.count + 1,
+                        items: [...t.items, row],
+                      }
+                    : t,
+                );
+              }
+              return [
+                {
+                  quote: row.quote,
+                  quoteKey: row.quote,
+                  chapterId: row.chapterId,
+                  count: 1,
+                  items: [row],
+                },
+                ...prev,
+              ];
+            });
+            void saveHighlight({
+              text: row.quote,
+              note: row.note,
+              color: "gold",
+              isPublic: false, // already posted via createAnnotation
+            });
           }}
         />
       )}
@@ -662,11 +700,9 @@ function ReaderPage() {
                 text: noteDraft.quote,
                 note,
                 color,
-                isPublic: isPublic && Boolean(user),
+                isPublic: isPublic && Boolean(user) && supportsCommunity,
               });
-              toast.success(
-                isPublic && user ? "已划线并公开批注" : "已保存划线与批注",
-              );
+              toast.success("已保存");
               setNoteDraft(null);
             } finally {
               setAnnoBusy(false);
@@ -675,7 +711,7 @@ function ReaderPage() {
         />
       )}
 
-      {useText && chapters.length > 1 && chromeVisible && !sel && !noteDraft && (
+      {useText && chapters.length > 1 && chromeVisible && !sel && !noteDraft && !threadQuote && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-between gap-3 px-3 pb-3 safe-pb">
           <Button
             variant="secondary"
@@ -812,26 +848,12 @@ function ReaderPage() {
             </p>
           </SheetHeader>
           <div className="max-h-[calc(min(90dvh,680px)-5rem)] space-y-6 overflow-y-auto px-5 py-5 safe-pb">
-            {supportsDanmaku && (
-              <div className="flex items-center justify-between rounded-[var(--radius-lg)] border border-border bg-bg-subtle/40 px-3 py-3">
-                <div>
-                  <p className="text-sm font-medium">公版弹幕</p>
-                  <p className="text-xs text-fg-muted">
-                    段落下显示其他读者的评论
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={toggleDanmaku}
-                  className={cn(
-                    "rounded-full px-3 py-1.5 text-xs font-medium",
-                    danmakuOn
-                      ? "bg-primary text-primary-fg"
-                      : "bg-bg-elevated text-fg-muted",
-                  )}
-                >
-                  {danmakuOn ? "开" : "关"}
-                </button>
+            {supportsCommunity && (
+              <div className="rounded-[var(--radius-lg)] border border-border bg-bg-subtle/40 px-3 py-3 text-xs text-fg-muted">
+                <p className="text-sm font-medium text-fg">共读想法</p>
+                <p className="mt-1">
+                  划选一句 →「写想法」。多人可在同一句原文上留下解读；点彩色高亮查看。
+                </p>
               </div>
             )}
 

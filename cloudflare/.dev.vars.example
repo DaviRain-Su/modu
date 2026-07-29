@@ -1,0 +1,15 @@
+# 复制为 cloudflare/.dev.vars（勿提交真实密钥）
+# wrangler dev 会自动读取
+
+MODU_API_SECRET=dev-secret-change-me
+BETTER_AUTH_SECRET=dev-auth-secret-change-me-32chars-min
+
+# Grok 联邦登录（Google / X 经 auth.grok.me）
+# 正式环境在 Dashboard 用 wrangler secret put
+GROK_AUTH_ISSUER=https://auth.grok.me
+GROK_AUTH_CLIENT_ID=
+GROK_AUTH_CLIENT_SECRET=
+
+# 可选：直连 Google / X（若 auth 层支持）
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=

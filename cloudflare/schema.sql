@@ -129,3 +129,50 @@ CREATE TABLE IF NOT EXISTS ai_messages (
 );
 
 CREATE INDEX IF NOT EXISTS ai_messages_conv_idx ON ai_messages(conversation_id);
+
+-- Reading progress cloud sync
+CREATE TABLE IF NOT EXISTS reading_progress_cloud (
+  user_id TEXT NOT NULL,
+  book_id TEXT NOT NULL,
+  progress REAL NOT NULL DEFAULT 0,
+  chapter_id TEXT,
+  page INTEGER,
+  cfi TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, book_id)
+);
+CREATE INDEX IF NOT EXISTS reading_progress_user_idx
+  ON reading_progress_cloud (user_id, updated_at);
+
+-- Public-domain danmaku (paragraph comments)
+CREATE TABLE IF NOT EXISTS reading_danmaku (
+  id TEXT PRIMARY KEY NOT NULL,
+  book_id TEXT NOT NULL,
+  chapter_id TEXT NOT NULL DEFAULT '',
+  para_index INTEGER NOT NULL DEFAULT 0,
+  quote TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS reading_danmaku_book_ch_idx
+  ON reading_danmaku (book_id, chapter_id, para_index, created_at);
+CREATE INDEX IF NOT EXISTS reading_danmaku_user_idx
+  ON reading_danmaku (user_id, created_at);
+
+-- Community public-domain submissions (if using CF as primary DB later)
+CREATE TABLE IF NOT EXISTS community_pd_books (
+  id TEXT PRIMARY KEY NOT NULL,
+  title TEXT NOT NULL,
+  author TEXT,
+  description TEXT,
+  license_note TEXT,
+  pd_basis TEXT,
+  source_url TEXT,
+  cover_color TEXT,
+  category TEXT,
+  tags TEXT,
+  chapters_json TEXT,
+  contributor_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

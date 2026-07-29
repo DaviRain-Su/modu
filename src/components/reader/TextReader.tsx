@@ -11,13 +11,10 @@ import {
   markClass,
   type LocalHighlight,
 } from "@/lib/reader/highlights";
-import type { DanmakuRow } from "@/lib/server/danmaku";
+import type { QuoteThread } from "@/lib/server/social";
+import { quotesMatch } from "@/lib/reader/quote-key";
 import type { SelectionAnchor } from "./SelectionToolbar";
-import {
-  DanmakuChapterBar,
-  ParaDanmaku,
-  useDanmakuMap,
-} from "./DanmakuLayer";
+import { QuoteHeatBadge } from "./QuoteThreadSheet";
 import { cn } from "@/lib/utils";
 
 export function TextReader({
@@ -30,11 +27,8 @@ export function TextReader({
   font,
   theme,
   highlights = [],
-  danmaku = [],
-  danmakuEnabled,
-  onToggleDanmaku,
-  signedIn,
-  onDanmakuPosted,
+  publicThreads = [],
+  onOpenThread,
   onProgress,
   onSelect,
 }: {
@@ -47,11 +41,9 @@ export function TextReader({
   font: ReaderFont;
   theme: ReaderTheme;
   highlights?: Highlight[];
-  danmaku?: DanmakuRow[];
-  danmakuEnabled?: boolean;
-  onToggleDanmaku?: () => void;
-  signedIn?: boolean;
-  onDanmakuPosted?: (row: DanmakuRow) => void;
+  /** 公版共读：按句聚合的公开想法 */
+  publicThreads?: QuoteThread[];
+  onOpenThread?: (quote: string) => void;
   onProgress: (pct: number) => void;
   onSelect: (anchor: SelectionAnchor | null) => void;
 }) {
@@ -77,11 +69,28 @@ export function TextReader({
     [highlights, chapter.id],
   );
 
-  const dmMap = useDanmakuMap(danmaku);
-  const showDanmaku =
-    Boolean(danmakuEnabled) &&
-    (book.visibility === "public_domain" ||
-      book.visibility === "public_domain_community");
+  // 本章相关的公开共读句（用于正文高亮）
+  const chapterThreads = useMemo(() => {
+    return publicThreads.filter(
+      (t) =>
+        !t.chapterId ||
+        t.chapterId === chapter.id ||
+        paragraphs.some((p) => p.includes(t.quote.slice(0, 12))),
+    );
+  }, [publicThreads, chapter.id, paragraphs]);
+
+  // 合并：本地划线 + 公版共读句（金色社区 mark）
+  const markSource = useMemo(() => {
+    const fromLocal = chapterHighlights;
+    const fromPublic: LocalHighlight[] = chapterThreads.map((t) => ({
+      id: `pub_${t.quoteKey}`,
+      text: t.quote,
+      color: "gold" as const,
+      createdAt: 0,
+      chapterId: chapter.id,
+    }));
+    return [...fromLocal, ...fromPublic];
+  }, [chapterHighlights, chapterThreads, chapter.id]);
 
   useEffect(() => {
     const el = scrollerRef.current;
@@ -136,6 +145,15 @@ export function TextReader({
     };
   }, [onSelect]);
 
+  function heatFor(text: string) {
+    const t = chapterThreads.find((x) => quotesMatch(x.quote, text));
+    return t?.count ?? 0;
+  }
+
+  const isPd =
+    book.visibility === "public_domain" ||
+    book.visibility === "public_domain_community";
+
   return (
     <div
       ref={scrollerRef}
@@ -168,59 +186,47 @@ export function TextReader({
             {chapter.title}
           </h1>
           <p className="mt-2 text-sm text-current/50">{book.author}</p>
+          {isPd && (
+            <p className="mt-3 text-xs leading-relaxed text-current/40">
+              公版共读：划选一句 → 留下想法；别人可在同一句上继续写。点彩色字可看众人想法。
+            </p>
+          )}
         </header>
 
-        {showDanmaku !== undefined && onToggleDanmaku && (
-          <DanmakuChapterBar
-            total={danmaku.length}
-            enabled={Boolean(danmakuEnabled)}
-            onToggle={onToggleDanmaku}
-            signedIn={Boolean(signedIn)}
-          />
-        )}
-
         {paragraphs.map((p, i) => {
-          const segs = applyHighlightMarks(p, chapterHighlights);
+          const segs = applyHighlightMarks(p, markSource);
           return (
-            <div key={i} data-para={i}>
-              <p>
-                {segs.map((s, j) =>
-                  s.kind === "mark" ? (
+            <p key={i}>
+              {segs.map((s, j) =>
+                s.kind === "mark" ? (
+                  <span key={j} className="inline">
                     <mark
-                      key={j}
                       className={cn(
-                        "rounded-sm px-0.5 text-inherit",
+                        "cursor-pointer rounded-sm px-0.5 text-inherit",
                         markClass(s.color),
                       )}
-                      title={
-                        chapterHighlights.find((h) => h.text === s.text)
-                          ?.note || "划线"
-                      }
+                      title="查看这句上的想法"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenThread?.(s.text);
+                      }}
                     >
                       {s.text}
                     </mark>
-                  ) : (
-                    <span key={j}>{s.text}</span>
-                  ),
-                )}
-              </p>
-              {showDanmaku && (
-                <ParaDanmaku
-                  bookId={book.id}
-                  chapterId={chapter.id}
-                  paraIndex={i}
-                  quote={p}
-                  items={dmMap.get(i) || []}
-                  enabled={Boolean(danmakuEnabled)}
-                  signedIn={Boolean(signedIn)}
-                  onPosted={(row) => onDanmakuPosted?.(row)}
-                />
+                    <QuoteHeatBadge
+                      count={heatFor(s.text)}
+                      onClick={() => onOpenThread?.(s.text)}
+                    />
+                  </span>
+                ) : (
+                  <span key={j}>{s.text}</span>
+                ),
               )}
-            </div>
+            </p>
           );
         })}
         <footer className="mt-14 border-t border-current/10 pt-6 text-center text-sm text-current/40">
-          本章完 · 划选可批注 · 公版书可开弹幕共读
+          本章完 · 划选句子写下想法
         </footer>
       </article>
     </div>
