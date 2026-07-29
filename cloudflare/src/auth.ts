@@ -288,7 +288,9 @@ export function createAuth(env: Env) {
   return betterAuth({
     baseURL: origin,
     secret,
-    database: createD1Adapter(env.DB) as never,
+    // must be a function — better-auth only treats functions as custom adapters
+    // (plain objects go through Kysely and fail with "Failed to initialize database adapter")
+    database: ((_options: unknown) => createD1Adapter(env.DB)) as never,
     trustedOrigins: trusted,
     emailAndPassword: { enabled: true },
     account: {
